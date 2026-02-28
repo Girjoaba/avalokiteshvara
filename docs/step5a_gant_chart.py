@@ -13,8 +13,7 @@ from step1_api_call import (
     TELEGRAM_TOKEN,
     TELEGRAM_CHAT_ID,
 )
-
-# ══════════════════════════════════════════════════════════════════════
+#  ══════════════════════════════════════════════════════════════════════
 # STEP 5a — Gantt chart
 #
 # Layout:
@@ -25,6 +24,39 @@ from step1_api_call import (
 #   - Blue dashed today line
 #   - Dark background (#0d1117) matching novaboard aesthetic
 # ══════════════════════════════════════════════════════════════════════
+DAY_START_HOUR = 8
+DAY_END_HOUR   = 16
+
+def split_into_working_segments(start_dt, end_dt):
+    """
+    Split a phase (start_dt → end_dt) into drawable segments covering
+    only working hours (08:00–16:00). The gaps between 16:00 and 08:00
+    are simply not drawn — the visual white space is the overnight break.
+
+    A phase like THT: Mar01 13:18 → Mar02 08:18 becomes:
+      [Mar01 13:18 → Mar01 16:00]   (2h 42min today)
+      [Mar02 08:00 → Mar02 08:18]   (18min tomorrow)
+    The 16-hour gap in between is invisible on the chart — correct.
+    """
+    segments = []
+    cursor   = start_dt
+
+    while cursor < end_dt:
+        day_end = cursor.replace(
+            hour=DAY_END_HOUR, minute=0, second=0, microsecond=0
+        )
+        if end_dt <= day_end:
+            segments.append((cursor, end_dt))
+            break
+        else:
+            segments.append((cursor, day_end))
+            cursor = (cursor + timedelta(days=1)).replace(
+                hour=DAY_START_HOUR, minute=0, second=0, microsecond=0
+            )
+
+    return segments
+
+
 def generate_gantt(schedule_log):
     fig, ax = plt.subplots(figsize=(22, 10))
     fig.patch.set_facecolor('#0d1117')
@@ -36,15 +68,18 @@ def generate_gantt(schedule_log):
         spine.set_edgecolor('#30363d')
 
     for i, entry in enumerate(schedule_log):
-        # Draw each phase as its own colored segment
-        # This makes phase breakdown visible at a glance
+        # Draw each phase split into working-hours segments.
+        # A phase that crosses midnight becomes 2+ bars with a visible
+        # gap between 16:00 and 08:00 — the overnight break.
         for phase in entry['phases']:
-            ps    = mdates.date2num(phase['start'])
-            pe    = mdates.date2num(phase['end'])
-            color = PHASE_COLORS.get(phase['name'], '#3498db')
-            ax.barh(i, pe - ps, left=ps, height=0.62,
-                    color=color, alpha=0.88,
-                    edgecolor='#0d1117', linewidth=0.4)
+            color    = PHASE_COLORS.get(phase['name'], '#3498db')
+            segments = split_into_working_segments(phase['start'], phase['end'])
+            for seg_start, seg_end in segments:
+                ps = mdates.date2num(seg_start)
+                pe = mdates.date2num(seg_end)
+                ax.barh(i, pe - ps, left=ps, height=0.62,
+                        color=color, alpha=0.88,
+                        edgecolor='#0d1117', linewidth=0.4)
 
         # Gold diamond at deadline — easy to spot vs bar end
         dl = mdates.date2num(entry['deadline'])
@@ -179,4 +214,3 @@ def wait_for_approval():
             return False
         else:
             print("   Please type 'approve' or 'reject'.")
-
