@@ -8,4 +8,5 @@ This is Physical Hack repository
 conda create -n arke python=3.11
 conda activate arke
 conda install requests
+pip install matplotlib python-telegram-bot google-generativeai opencv-python anthropic mcp
 ```
