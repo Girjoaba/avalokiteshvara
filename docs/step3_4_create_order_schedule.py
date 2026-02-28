@@ -20,6 +20,60 @@ from step1_api_call import (
 from step2_plan_policy import detect_so005_conflict
 
 # ══════════════════════════════════════════════════════════════════════
+# WORKING HOURS HELPER
+#
+# The factory runs exactly 480 min/day (08:00–16:00), 7 days/week.
+# Raw timedelta arithmetic ignores the end-of-day boundary — this
+# function correctly carries remaining minutes to the next morning.
+#
+# Example:
+#   add_working_minutes(Feb 28 15:00, 120 min)
+#   → only 60 min left today (15:00→16:00)
+#   → 60 min remaining carry to Mar 1 08:00→09:00
+#   → returns Mar 1 09:00
+#
+# ══════════════════════════════════════════════════════════════════════
+DAY_START_HOUR = 8   # 08:00
+DAY_END_HOUR   = 16  # 16:00  (08:00 + 480 min)
+
+def add_working_minutes(start_dt, minutes):
+    """
+    Advance a datetime by `minutes` of working time, respecting the
+    08:00–16:00 shift. Rolls over to the next day's 08:00 when the
+    shift ends, consuming any leftover capacity first.
+
+    Args:
+        start_dt : timezone-aware datetime within a working shift
+        minutes  : total working minutes to add (>= 0)
+
+    Returns:
+        timezone-aware datetime after `minutes` of production time
+    """
+    current   = start_dt
+    remaining = minutes
+
+    while remaining > 0:
+        # How many minutes have already been used today since 08:00
+        elapsed_today    = (current.hour * 60 + current.minute) - (DAY_START_HOUR * 60)
+        # How many minutes remain in today's shift
+        left_in_shift    = MINUTES_PER_DAY - elapsed_today
+
+        if remaining <= left_in_shift:
+            # Fits entirely within today's remaining shift — done
+            current   = current + timedelta(minutes=remaining)
+            remaining = 0
+        else:
+            # Spills past 16:00 — consume today's remainder, jump to
+            # next day 08:00, and continue with what's left
+            remaining -= left_in_shift
+            current    = (current + timedelta(days=1)).replace(
+                hour=DAY_START_HOUR, minute=0, second=0, microsecond=0
+            )
+
+    return current
+
+
+# ══════════════════════════════════════════════════════════════════════
 # STEP 3+4 — Create production orders & schedule phases
 # ══════════════════════════════════════════════════════════════════════
 def build_product_map(token):
@@ -53,18 +107,27 @@ def set_phase_dates(token, phase_id, start_dt, end_dt):
     (starting_date / ending_date returned 500 errors)
     """
     fmt = "%Y-%m-%dT%H:%M:%SZ"
-    r1 = requests.post(
-        f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_starting_date",
-        json={"starts_at": start_dt.strftime(fmt)},
-        headers=get_headers(token)
-    )
-    r2 = requests.post(
+
+    # Important: update ending date *first*, then starting date.
+    # Arke validates that starting_date <= ending_date on each call.
+    # With 8h shifts we often push phases later than Arke's default plan.
+    # If we updated the start first, it could temporarily be > current end
+    # and trigger: "starting date cannot be after ending date".
+    r_end = requests.post(
         f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_ending_date",
         json={"ends_at": end_dt.strftime(fmt)},
         headers=get_headers(token)
     )
-    if not r1.ok: print(f"   ⚠️  start date failed: {r1.status_code} {r1.text}")
-    if not r2.ok: print(f"   ⚠️  end date failed:   {r2.status_code} {r2.text}")
+    r_start = requests.post(
+        f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_starting_date",
+        json={"starts_at": start_dt.strftime(fmt)},
+        headers=get_headers(token)
+    )
+
+    if not r_start.ok:
+        print(f"   ⚠️  start date failed: {r_start.status_code} {r_start.text}")
+    if not r_end.ok:
+        print(f"   ⚠️  end date failed:   {r_end.status_code} {r_end.text}")
 
 def create_and_schedule(token, order, current_time):
     product_id   = order['_product_id']
@@ -134,7 +197,10 @@ def create_and_schedule(token, order, current_time):
             continue
 
         total_mins = mins_per_u * quantity
-        phase_end  = phase_start + timedelta(minutes=total_mins)
+        # ── KEY FIX: use add_working_minutes instead of raw timedelta ──
+        # Raw timedelta would let phases run past 16:00 and overnight,
+        # violating the 480 min/day constraint. This respects the shift.
+        phase_end  = add_working_minutes(phase_start, total_mins)
 
         set_phase_dates(token, phase_id, phase_start, phase_end)
 
@@ -180,13 +246,36 @@ def schedule_all_orders(token, sorted_orders):
         if log_entry:
             schedule_log.append(log_entry)
 
+    # ── Summary with capacity warning ────────────────────────────────
+    on_time_count = sum(1 for e in schedule_log if e['on_time'])
+    late_entries  = [e for e in schedule_log if not e['on_time']]
+
     print("\n" + "="*65)
-    print("📋 FINAL SCHEDULE SUMMARY")
+    print("📋 FINAL SCHEDULE SUMMARY  (480 min/day · 08:00–16:00 shifts)")
     print("="*65)
     for e in schedule_log:
         status = "✅" if e['on_time'] else "❌ LATE"
+        slack  = (e['deadline'] - e['po_end']).total_seconds() / 3600
+        slack_str = f"+{slack:.0f}h" if e['on_time'] else f"{slack:.0f}h"
         print(f"  {e['so_id']} | {e['product_id']:<12} x{e['quantity']:<3} | "
               f"{e['po_start'].strftime('%b %d %H:%M')} → {e['po_end'].strftime('%b %d %H:%M')} | "
-              f"Deadline: {e['deadline'].strftime('%b %d')} {status}")
+              f"Deadline: {e['deadline'].strftime('%b %d')} | {slack_str:>6} | {status}")
+
+    print(f"\n  On time: {on_time_count}/{len(schedule_log)}")
+
+    if late_entries:
+        total_work = sum(
+            sum(v * e['quantity'] for v in PHASE_DURATIONS[e['product_id']].values())
+            for e in schedule_log
+        )
+        print(f"\n  ⚠️  CAPACITY NOTE:")
+        print(f"     Total work required : {total_work:,} min = {total_work/MINUTES_PER_DAY:.1f} working days")
+        print(f"     {len(late_entries)} order(s) are late under the 480 min/day constraint.")
+        print(f"     EDF minimises maximum lateness — no reordering can fix a capacity shortfall.")
+        print(f"     Late orders:")
+        for e in late_entries:
+            late_by = (e['po_end'] - e['deadline']).total_seconds() / 3600
+            print(f"       {e['so_id']} | {e['product_id']} x{e['quantity']} | "
+                  f"late by {late_by:.1f}h")
 
     return schedule_log
