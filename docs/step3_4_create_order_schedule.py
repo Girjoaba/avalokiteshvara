@@ -18,6 +18,11 @@ from step1_api_call import (
 
 # EDF conflict explanation lives in the planning module
 from step2_plan_policy import detect_so005_conflict
+from api import (
+    fetch_production_order_by_id,
+    update_production_order_start,
+    update_production_order_end,
+)
 
 # ══════════════════════════════════════════════════════════════════════
 # WORKING HOURS HELPER
@@ -101,33 +106,190 @@ def get_phase_name(p):
         ''
     )
 
-def set_phase_dates(token, phase_id, start_dt, end_dt):
+def _parse_dt(value):
+    """Coerce Arke timestamp string into a timezone-aware datetime.
+    The API sometimes uses Z suffix; Python's fromisoformat requires
+    explicit offset. Return `None` if value is falsy.
     """
-    Field names confirmed working: starts_at / ends_at
-    (starting_date / ending_date returned 500 errors)
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def set_phase_dates(token, phase_id, start_dt, end_dt, old_start_dt=None):
+    """
+    Update a single phase in Arke with the supplied start/end datetimes.
+
+    Historically we always updated the **end** date first, then the
+    start.  That avoids the validation error "starting date cannot be
+    after ending date" when moving an existing phase **later** in the
+    calendar (the old end is compared to the new start).  However, when
+    rescheduling orders _earlier_ (e.g. skipping a failed product order
+    and pushing later orders forward) the new end timestamp can end up
+    before the *existing* start stored on the server.  In that case the
+    first POST would be rejected with 400/invalid-date.  The fix is to
+    adjust the update order based on whether the new range moves
+    backwards.
+
+    Args:
+        token: API JWT
+        phase_id: Arke phase UUID
+        start_dt: desired new start (tz-aware)
+        end_dt: desired new end (tz-aware)
+        old_start_dt: if known, the server's current start time for this
+            phase; used to decide whether to post start or end first.
     """
     fmt = "%Y-%m-%dT%H:%M:%SZ"
 
-    # Important: update ending date *first*, then starting date.
-    # Arke validates that starting_date <= ending_date on each call.
-    # With 8h shifts we often push phases later than Arke's default plan.
-    # If we updated the start first, it could temporarily be > current end
-    # and trigger: "starting date cannot be after ending date".
-    r_end = requests.post(
-        f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_ending_date",
-        json={"ends_at": end_dt.strftime(fmt)},
-        headers=get_headers(token)
-    )
-    r_start = requests.post(
-        f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_starting_date",
-        json={"starts_at": start_dt.strftime(fmt)},
-        headers=get_headers(token)
-    )
+    # decide update order.  default is end→start (safe for moving
+    # later).  if our new end would be before the *old* start, then flip
+    # the order so that the server validates against the updated start.
+    update_end_first = True
+    if old_start_dt is not None and end_dt < old_start_dt:
+        update_end_first = False
+
+    r_start = None
+    r_end = None
+
+    if update_end_first:
+        r_end = requests.post(
+            f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_ending_date",
+            json={"ends_at": end_dt.strftime(fmt)},
+            headers=get_headers(token),
+        )
+        r_start = requests.post(
+            f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_starting_date",
+            json={"starts_at": start_dt.strftime(fmt)},
+            headers=get_headers(token),
+        )
+    else:
+        # moving this phase earlier than its previous start – update the
+        # start timestamp **before** the end so the API validates against
+        # the new start.
+        print(f"   🔄 phase {phase_id}: start<old, updating start first")
+        r_start = requests.post(
+            f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_starting_date",
+            json={"starts_at": start_dt.strftime(fmt)},
+            headers=get_headers(token),
+        )
+        r_end = requests.post(
+            f"{ARKE_BASE_URL}/api/product/production-order-phase/{phase_id}/_update_ending_date",
+            json={"ends_at": end_dt.strftime(fmt)},
+            headers=get_headers(token),
+        )
 
     if not r_start.ok:
         print(f"   ⚠️  start date failed: {r_start.status_code} {r_start.text}")
     if not r_end.ok:
         print(f"   ⚠️  end date failed:   {r_end.status_code} {r_end.text}")
+
+
+def reschedule_single_order(token, log_entry, start_time):
+    """
+    Reschedule one production order (existing PO) to start at start_time.
+    Updates phase dates in Arke and PO start/end. Returns new end time and updated log entry.
+    """
+    po_id = log_entry["po_id"]
+    product_id = log_entry["product_id"]
+    quantity = log_entry["quantity"]
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+
+    detail = fetch_production_order_by_id(token, po_id)
+    phases_raw = (
+        detail.get("phases")
+        or detail.get("production_phases")
+        or detail.get("plan")
+        or []
+    )
+    phases_sorted = sorted(
+        phases_raw,
+        key=lambda p: PHASES_ORDER.index(get_phase_name(p))
+        if get_phase_name(p) in PHASES_ORDER
+        else 99,
+    )
+
+    phase_start = start_time
+    phase_log = []
+
+    for phase in phases_sorted:
+        phase_id = phase.get("id") or phase.get("phase_id")
+        phase_name = get_phase_name(phase)
+        mins_per_u = PHASE_DURATIONS.get(product_id, {}).get(phase_name, 0)
+
+        if mins_per_u == 0 or not phase_id or phase_name not in PHASES_ORDER:
+            continue
+
+        # ── NEW: Skip started/completed phases ──
+        # If a phase is already running or done, we cannot change its dates.
+        # We accept its existing timeline and schedule subsequent phases after it.
+        status = phase.get("status")
+        if status in ("started", "completed"):
+            existing_start = phase.get("starts_at") or phase.get("starting_date")
+            existing_end = phase.get("ends_at") or phase.get("ending_date")
+            
+            # Parse or fallback to current cursor if missing (unlikely)
+            p_start = _parse_dt(existing_start) if existing_start else phase_start
+            p_end   = _parse_dt(existing_end)   if existing_end   else phase_start
+            
+            print(f"   🔒 {phase_name:<10} is {status}, keeping {p_start.strftime('%m-%d %H:%M')} → {p_end.strftime('%m-%d %H:%M')}")
+            
+            phase_log.append({"name": phase_name, "start": p_start, "end": p_end})
+            # The next phase starts after this one finishes
+            phase_start = p_end
+            continue
+
+        # grab the existing start timestamp from Arke (if present) so we
+        # can detect when the reschedule is trying to move the phase
+        # earlier than it was originally planned.
+        old_start_dt = None
+        existing = (
+            phase.get("starts_at") or
+            phase.get("starting_date") or
+            phase.get("start")
+        )
+        if existing:
+            old_start_dt = _parse_dt(existing)
+
+        # Ensure we don't schedule a new phase in the past (before the order's allowed start)
+        # even if the previous phase finished long ago.
+        if phase_start < start_time:
+            phase_start = start_time
+
+        total_mins = mins_per_u * quantity
+        phase_end = add_working_minutes(phase_start, total_mins)
+        set_phase_dates(token, phase_id, phase_start, phase_end, old_start_dt)
+        phase_log.append({"name": phase_name, "start": phase_start, "end": phase_end})
+        phase_start = phase_end
+
+    end_time = phase_start
+    try:
+        update_production_order_start(token, po_id, start_time.strftime(fmt))
+        update_production_order_end(token, po_id, end_time.strftime(fmt))
+    except Exception as e:
+        # Server may reject PO-level date change (e.g. order in progress); phase dates are already updated
+        print(f"   ⚠️  PO date update skipped for {po_id}: {e}")
+
+    updated_entry = dict(log_entry)
+    updated_entry["po_start"] = start_time
+    updated_entry["po_end"] = end_time
+    updated_entry["phases"] = phase_log
+    return end_time, updated_entry
+
+
+def reschedule_orders_from_time(token, schedule_entries, start_time):
+    """
+    Reschedule a list of production orders to run sequentially from start_time.
+    Returns (end_time_after_last, list of updated log entries).
+    """
+    current_time = start_time
+    updated_entries = []
+    for entry in schedule_entries:
+        current_time, updated_entry = reschedule_single_order(
+            token, entry, current_time
+        )
+        updated_entries.append(updated_entry)
+    return current_time, updated_entries
+
 
 def create_and_schedule(token, order, current_time):
     product_id   = order['_product_id']
@@ -196,13 +358,24 @@ def create_and_schedule(token, order, current_time):
         if mins_per_u == 0 or not phase_id or phase_name not in PHASES_ORDER:
             continue
 
+        # capture the phase's current start time so set_phase_dates can
+        # decide whether we need to update the start before the end.
+        old_start_dt = None
+        existing = (
+            phase.get('starts_at') or
+            phase.get('starting_date') or
+            phase.get('start')
+        )
+        if existing:
+            old_start_dt = _parse_dt(existing)
+
         total_mins = mins_per_u * quantity
         # ── KEY FIX: use add_working_minutes instead of raw timedelta ──
         # Raw timedelta would let phases run past 16:00 and overnight,
         # violating the 480 min/day constraint. This respects the shift.
         phase_end  = add_working_minutes(phase_start, total_mins)
 
-        set_phase_dates(token, phase_id, phase_start, phase_end)
+        set_phase_dates(token, phase_id, phase_start, phase_end, old_start_dt)
 
         days = total_mins / MINUTES_PER_DAY
         print(f"   ⏱  {phase_name:<10} "

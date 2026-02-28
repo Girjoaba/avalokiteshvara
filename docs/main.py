@@ -11,11 +11,21 @@ This script wires together the step modules:
 """
 import requests
 import json
+<<<<<<< Updated upstream:docs/main.py
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 from datetime import datetime, timedelta, timezone
 
+=======
+from real_time.advance_pipleine import move_pipeline, STATUS_BROKEN, STATUS_DONE, STATUS_IN_PROGRESS
+from real_time.robot import RobotAvalokiteshvara
+from real_time.reschedule import (
+    save_failed_order,
+    ask_user_skip_or_restart,
+    reschedule_after_failure,
+)
+>>>>>>> Stashed changes:src/main.py
 from step1_api_call import (
     login,
     fetch_sales_orders,
@@ -77,6 +87,62 @@ def main() -> None:
     # else:
     #     print("\n Schedule rejected — adjust and rerun.")
 
+<<<<<<< Updated upstream:docs/main.py
+=======
+    # TODO: remove later
+    # starts all orders
+    for entry in schedule_log:
+        order_id = entry["po_id"]
+        confirmed_order = confirm_order(token, order_id)
+
+    # 7) Real-Time pipeline with reschedule on failure
+    robot = RobotAvalokiteshvara()
+    print("Starting real time...")
+    errors = 0
+    correct = 0
+    idx = 0
+    while idx < len(schedule_log):
+        entry = schedule_log[idx]
+        order_id = entry["po_id"]
+        print(f"Order id: {order_id}")
+        print(f"Processing Order ID: {order_id}")
+
+        status = STATUS_IN_PROGRESS
+        while status == STATUS_IN_PROGRESS:
+            status, failed_info = move_pipeline(token, order_id, robot)
+            if status == STATUS_BROKEN:
+                errors += 1
+                print(json.dumps(obj=failed_info, indent=4))
+                failed_order_info = {
+                    "schedule_index": idx,
+                    "log_entry": entry,
+                    "failed_phase_id": failed_info["failed_phase_id"],
+                    "failed_phase_name": failed_info["failed_phase_name"],
+                }
+                save_failed_order(
+                    log_entry=entry,
+                    schedule_index=idx,
+                    failed_phase_id=failed_info["failed_phase_id"],
+                    failed_phase_name=failed_info["failed_phase_name"],
+                )
+                choice = ask_user_skip_or_restart(
+                    entry, failed_info["failed_phase_name"]
+                )
+                schedule_log = reschedule_after_failure(
+                    token, schedule_log, failed_order_info, choice
+                )
+                # Retry: same idx (restart = same order; skip = next order is now at idx)
+                # We break here to reload the entry from the new schedule_log in the outer loop.
+                break
+
+            if status == STATUS_DONE:
+                correct += 1
+                idx += 1
+                break
+
+    print(f"Correct: {correct}")
+    print(f"Errors: {errors}")
+>>>>>>> Stashed changes:src/main.py
 
 
 if __name__ == "__main__":

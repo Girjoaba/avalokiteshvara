@@ -155,7 +155,9 @@ def generate_gantt(schedule_log):
     plt.tight_layout()
     plt.savefig('gantt.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
     print("\n📊 Gantt chart saved to gantt.png")
-    plt.show()
+    plt.close(fig)
+    # Do not call plt.show() here: an interactive window can leave stdin/terminal
+    # in a bad state, so later input() (e.g. skip/restart prompt) would not work.
 
 
 # ══════════════════════════════════════════════════════════════════════
