@@ -3,7 +3,7 @@ from typing import Dict, List
 import requests
 
 # Constants
-BASE_URL = "https://hackathon1.arke.so/api"
+BASE_URL = "https://hackathon3.arke.so/api"
 USERNAME = "arke"
 PASSWORD = "arke"
 
@@ -42,12 +42,10 @@ def fetch_products(token: str) -> List[Dict]:
     data = response.json()
     return data if isinstance(data, list) else data.get("items", [])
 
-
 def start_phase(token: str, phase_id: str) -> Dict:
     """Transitions a ready phase to started."""
     url = f"{BASE_URL}/product/production-order-phase/{phase_id}/_start"
     headers = {"Authorization": f"Bearer {token}"}
-
     response = requests.post(url, headers=headers)
     response.raise_for_status()
     return response.json()
