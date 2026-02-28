@@ -1,0 +1,594 @@
+openapi: 3.0.3
+info:
+  title: Arke Hackathon API
+  version: 1.0.0
+  description: >
+    OpenAPI spec assembled from live endpoint probing and challenge documentation.
+    Read endpoint schemas are based on observed payloads from hackathon tenant data.
+    Mutation endpoint request/response schemas are inferred from endpoint naming and examples.
+servers:
+  - url: https://hackathon1.arke.so
+    description: Team 1 tenant
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Sales Orders
+  - name: Product
+  - name: Production
+  - name: IAM
+paths:
+  /api/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate and get access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Auth token issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+  /api/sales/order:
+    get:
+      tags: [Sales Orders]
+      summary: List sales orders
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+          description: For challenge flow use `accepted`.
+      responses:
+        '200':
+          description: List of sales orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SalesOrderSummary'
+  /api/sales/order/_active:
+    get:
+      tags: [Sales Orders]
+      summary: List active sales orders with line items
+      responses:
+        '200':
+          description: Active orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SalesOrderActive'
+  /api/sales/order/{id}:
+    get:
+      tags: [Sales Orders]
+      summary: Get one sales order by id
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: Sales order detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalesOrderDetail'
+  /api/product/product:
+    get:
+      tags: [Product]
+      summary: List products
+      responses:
+        '200':
+          description: Product catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductCatalogItem'
+  /api/product/production-phase:
+    get:
+      tags: [Product]
+      summary: List production phases
+      responses:
+        '200':
+          description: Production phase definitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProductionPhaseDefinition'
+  /api/iam/warehouse:
+    get:
+      tags: [IAM]
+      summary: Get warehouse details
+      responses:
+        '200':
+          description: Warehouse object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Warehouse'
+  /api/product/production:
+    put:
+      tags: [Production]
+      summary: Create production order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductionOrderCreateRequest'
+      responses:
+        '200':
+          description: Production order created (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+        '201':
+          description: Production order created (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production/{id}:
+    get:
+      tags: [Production]
+      summary: Get production order by id
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: Production order detail (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production/{id}/_schedule:
+    post:
+      tags: [Production]
+      summary: Generate production phases from BOM
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: Schedule operation result (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production/{id}/_confirm:
+    post:
+      tags: [Production]
+      summary: Confirm production order
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: Confirm operation result (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production/{id}/_update_starting_date:
+    post:
+      tags: [Production]
+      summary: Update production order start date
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductionStartDateUpdateRequest'
+      responses:
+        '200':
+          description: Update result (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production/{id}/_update_ending_date:
+    post:
+      tags: [Production]
+      summary: Update production order end date
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductionEndDateUpdateRequest'
+      responses:
+        '200':
+          description: Update result (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production-order-phase/{id}/_update_starting_date:
+    post:
+      tags: [Production]
+      summary: Update production phase start date
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhaseStartDateUpdateRequest'
+      responses:
+        '200':
+          description: Update result (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production-order-phase/{id}/_update_ending_date:
+    post:
+      tags: [Production]
+      summary: Update production phase end date
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhaseEndDateUpdateRequest'
+      responses:
+        '200':
+          description: Update result (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production-order-phase/{id}/_start:
+    post:
+      tags: [Production]
+      summary: Start production phase
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: Start result (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+  /api/product/production-order-phase/{id}/_complete:
+    post:
+      tags: [Production]
+      summary: Complete production phase
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: Complete result (schema inferred)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlexibleObject'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    EntityId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    LoginResponse:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken:
+          type: string
+    UserRef:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        username:
+          type: string
+    AuditMeta:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+        by:
+          $ref: '#/components/schemas/UserRef'
+    CustomerAttr:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        address:
+          type: string
+        country:
+          type: string
+        vat:
+          type: string
+    Price:
+      type: object
+      properties:
+        currency:
+          type: string
+        unit:
+          type: number
+        vat:
+          type: number
+    SalesOrderProductLine:
+      type: object
+      properties:
+        extra_id:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: integer
+        uom:
+          type: string
+        prices:
+          $ref: '#/components/schemas/Price'
+    SalesOrderProductLineActive:
+      allOf:
+        - $ref: '#/components/schemas/SalesOrderProductLine'
+        - type: object
+          properties:
+            available:
+              type: integer
+            shipped:
+              type: integer
+    SalesOrderSummary:
+      type: object
+      properties:
+        customer_attr:
+          $ref: '#/components/schemas/CustomerAttr'
+        default_currency:
+          type: string
+        expected_shipping_time:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        internal_id:
+          type: string
+        priority:
+          type: integer
+        shipped:
+          type: string
+        status:
+          type: string
+        time:
+          type: string
+          format: date-time
+        total_vat_incl:
+          type: number
+    SalesOrderActive:
+      allOf:
+        - $ref: '#/components/schemas/SalesOrderSummary'
+        - type: object
+          properties:
+            products:
+              type: array
+              items:
+                $ref: '#/components/schemas/SalesOrderProductLineActive'
+    CustomFormValues:
+      type: object
+      properties:
+        generation:
+          type: integer
+        values:
+          nullable: true
+    SalesOrderDetail:
+      type: object
+      properties:
+        archived:
+          type: boolean
+        created:
+          $ref: '#/components/schemas/AuditMeta'
+        updated:
+          $ref: '#/components/schemas/AuditMeta'
+        custom_form_values:
+          $ref: '#/components/schemas/CustomFormValues'
+        customer_attr:
+          $ref: '#/components/schemas/CustomerAttr'
+        customer_id:
+          type: string
+          format: uuid
+        default_currency:
+          type: string
+        expected_shipping_time:
+          type: string
+          format: date-time
+        foreign_ids:
+          type: object
+          additionalProperties: true
+        id:
+          type: string
+          format: uuid
+        internal_id:
+          type: string
+        notes:
+          type: string
+        payment_method:
+          type: string
+        priority:
+          type: integer
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/SalesOrderProductLine'
+        quote_internal_id:
+          type: string
+        shipping_address:
+          type: string
+        status:
+          type: string
+        time:
+          type: string
+          format: date-time
+        total:
+          type: number
+        total_vat_incl:
+          type: number
+        version:
+          type: integer
+    ProductCatalogItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        internal_id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        uom:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+        prices:
+          $ref: '#/components/schemas/Price'
+        created:
+          $ref: '#/components/schemas/AuditMeta'
+    ProductionPhaseDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+    WarehouseAddress:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        country:
+          type: string
+    Warehouse:
+      type: object
+      properties:
+        active:
+          type: boolean
+        address:
+          $ref: '#/components/schemas/WarehouseAddress'
+        foreign_ids:
+          type: object
+          additionalProperties: true
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+    ProductionOrderCreateRequest:
+      type: object
+      required: [product_id, quantity, starts_at, ends_at]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+    ProductionStartDateUpdateRequest:
+      type: object
+      description: Inferred shape; server may accept alternate field names.
+      properties:
+        starts_at:
+          type: string
+          format: date-time
+        starting_date:
+          type: string
+          format: date-time
+      additionalProperties: true
+    ProductionEndDateUpdateRequest:
+      type: object
+      description: Inferred shape; server may accept alternate field names.
+      properties:
+        ends_at:
+          type: string
+          format: date-time
+        ending_date:
+          type: string
+          format: date-time
+      additionalProperties: true
+    PhaseStartDateUpdateRequest:
+      type: object
+      description: Inferred shape; server may accept alternate field names.
+      properties:
+        starts_at:
+          type: string
+          format: date-time
+        starting_date:
+          type: string
+          format: date-time
+      additionalProperties: true
+    PhaseEndDateUpdateRequest:
+      type: object
+      description: Inferred shape; server may accept alternate field names.
+      properties:
+        ends_at:
+          type: string
+          format: date-time
+        ending_date:
+          type: string
+          format: date-time
+      additionalProperties: true
+    FlexibleObject:
+      type: object
+      additionalProperties: true
