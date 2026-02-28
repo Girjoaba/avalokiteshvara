@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Optional
 
 from step3_4_create_order_schedule import (
-    reschedule_single_order,
     reschedule_orders_from_time,
+    restart_order_as_new,
 )
 
 FAILED_ORDER_JSON = Path(__file__).resolve().parent.parent / "failed_order.json"
@@ -125,7 +125,7 @@ def reschedule_after_failure(
 
     if choice == "restart":
         # Reschedule failed order from phase 1 at now; then reschedule the rest after it
-        end_after_failed, updated_failed_entry = reschedule_single_order(
+        end_after_failed, updated_failed_entry = restart_order_as_new(
             token, log_entry, now
         )
         before = schedule_log[:idx]

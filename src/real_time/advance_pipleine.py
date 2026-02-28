@@ -11,7 +11,7 @@ from api import (
     start_phase,
 )
 
-from step3_4_create_order_schedule import schedule_all_orders, get_phase_name
+from step3_4_create_order_schedule import schedule_all_orders
 from real_time.robot import RobotAvalokiteshvara
 
 
@@ -19,40 +19,47 @@ STATUS_IN_PROGRESS = 0
 STATUS_DONE = 1
 STATUS_BROKEN = 2
 
+def move_pipeline(token, order_id, robot) -> (bool, list):
+    status = True
+    failed_product = None
 
-def move_pipeline(token, order_id, robot) -> tuple[int, dict | None]:
-    """
-    Advance one phase of the production order. Returns (status, payload).
-    - STATUS_DONE, None: order fully completed.
-    - STATUS_IN_PROGRESS, None: phase completed, more phases to go.
-    - STATUS_BROKEN, failed_info: phase failed. failed_info has "order", "failed_phase_id", "failed_phase_name".
-    """
     order = fetch_production_order_by_id(token, order_id)
-    print(json.dumps(obj=order, indent=4))
+    print(json.dumps(obj= order, indent=4))
     phases = order.get("phases", [])
     ready_phase = next((p for p in phases if p.get("status") == "ready"), None)
+
     if not ready_phase:
-        return STATUS_DONE, None
+        # Check if maybe all phases are done?
+        if all(p.get("status") == "done" for p in phases) and phases:
+             return STATUS_DONE, None
+        
+        # If order status is not 'in_progress' (e.g. 'draft', 'planned'), it might need confirmation?
+        order_status = order.get("status")
+        if order_status == "planned":
+             # This happens if not confirmed.
+             # We can try to confirm it here, or return a special status.
+             # But let's just log and fail gracefully for now.
+             print(f"⚠️  Order {order_id} has no ready phases. Status: {order_status}. Is it confirmed?")
+             return STATUS_BROKEN, order
+        
+        print(f"⚠️  Order {order_id} has no ready phases. Phases: {json.dumps([p.get('status') for p in phases])}")
+        return STATUS_BROKEN, order
 
     p_id = ready_phase["id"]
-    phase_name = get_phase_name(ready_phase)
     is_last = p_id == phases[-1]["id"]
-    start_phase(token, phase_id=p_id)
+    start_phase(token, phase_id= p_id)
 
     # wait for RobotAvalokiteshvara
     if not robot.is_phase_complete():
-        failed_info = {
-            "order": order,
-            "failed_phase_id": p_id,
-            "failed_phase_name": phase_name,
-        }
-        return STATUS_BROKEN, failed_info
+        return STATUS_BROKEN, order
 
     if is_last:
         complete_order(token, order_id)
         return STATUS_DONE, None
     else:
         complete_phase(token, p_id)
+
+    order = fetch_production_order_by_id(token, order_id)
 
     return STATUS_IN_PROGRESS, None
 

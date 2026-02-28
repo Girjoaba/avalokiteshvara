@@ -1,17 +1,17 @@
 from typing import Dict, List
 
 import requests
-import json
 
 # Constants
-BASE_URL = "https://hackathon1.arke.so/api"
+BASE_URL = "https://hackathon46.arke.so"
 USERNAME = "arke"
 PASSWORD = "arke"
 
 
 def get_auth_token() -> str:
     """Authenticates with the Arke API and returns the JWT token."""
-    url = f"{BASE_URL}/login"
+
+    url = f"{BASE_URL}/api/login"
     payload = {"username": USERNAME, "password": PASSWORD}
 
     response = requests.post(url, json=payload)
@@ -22,7 +22,8 @@ def get_auth_token() -> str:
 
 def fetch_active_orders(token: str) -> List[Dict]:
     """Fetches all accepted sales orders from the factory."""
-    url = f"{BASE_URL}/sales/order?status=accepted"
+
+    url = f"{BASE_URL}/api/sales/order?status=accepted"
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.get(url, headers=headers)
@@ -34,7 +35,8 @@ def fetch_active_orders(token: str) -> List[Dict]:
 
 def fetch_products(token: str) -> List[Dict]:
     """Fetches product catalog and BOM details."""
-    url = f"{BASE_URL}/product/product"
+
+    url = f"{BASE_URL}/api/product/product"
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.get(url, headers=headers)
@@ -47,7 +49,7 @@ def fetch_products(token: str) -> List[Dict]:
 def create_production_order(token: str, product_id: str, quantity) -> Dict:
     """Creates a new production order using a PUT request."""
 
-    url = f"{BASE_URL}/product/production"
+    url = f"{BASE_URL}/api/product/production"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     # Data as specified in your request
@@ -67,7 +69,7 @@ def fetch_production_order_by_id(token, order_id):
     """Fetches a specific production order by its resource path."""
 
     # Ensure the /product/ prefix is there!
-    url = f"{BASE_URL}/product/production/{order_id}"
+    url = f"{BASE_URL}/api/product/production/{order_id}"
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.get(url, headers=headers)
@@ -77,7 +79,7 @@ def fetch_production_order_by_id(token, order_id):
 def schedule_phase(token: str, prod_id: str) -> Dict:
     """Transition an order to a confirmed state after the human-in-the-loop accepts."""
 
-    url = f"{BASE_URL}/product/production/{prod_id}/_schedule"
+    url = f"{BASE_URL}/api/product/production/{prod_id}/_schedule"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(url, headers=headers)
     response.raise_for_status()
@@ -87,7 +89,7 @@ def schedule_phase(token: str, prod_id: str) -> Dict:
 def confirm_order(token: str, prod_id: str) -> Dict:
     """Transition an order to a confirmed state after the human-in-the-loop accepts."""
 
-    url = f"{BASE_URL}/product/production/{prod_id}/_start"
+    url = f"{BASE_URL}/api/product/production/{prod_id}/_start"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(url, headers=headers)
     response.raise_for_status()
@@ -96,7 +98,7 @@ def confirm_order(token: str, prod_id: str) -> Dict:
 def complete_order(token: str, prod_id: str) -> Dict:
     """Complete an."""
 
-    url = f"{BASE_URL}/product/production/{prod_id}/_complete"
+    url = f"{BASE_URL}/api/product/production/{prod_id}/_complete"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(url, headers=headers)
     response.raise_for_status()
@@ -106,7 +108,7 @@ def complete_order(token: str, prod_id: str) -> Dict:
 def start_phase(token: str, phase_id: str) -> Dict:
     """Transitions a ready phase to started."""
 
-    url = f"{BASE_URL}/product/production-order-phase/{phase_id}/_start"
+    url = f"{BASE_URL}/api/product/production-order-phase/{phase_id}/_start"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(url, headers=headers)
     response.raise_for_status()
@@ -116,7 +118,7 @@ def start_phase(token: str, phase_id: str) -> Dict:
 def complete_phase(token: str, phase_id: str) -> Dict:
     """Transitions a started phase to completed."""
 
-    url = f"{BASE_URL}/product/production-order-phase/{phase_id}/_complete"
+    url = f"{BASE_URL}/api/product/production-order-phase/{phase_id}/_complete"
     headers = {"Authorization": f"Bearer {token}"}
 
     response = requests.post(url, headers=headers)
@@ -124,37 +126,8 @@ def complete_phase(token: str, phase_id: str) -> Dict:
     return response.json()
 
 
-def update_production_order_start(token: str, po_id: str, starts_at: str) -> Dict:
-    """Update production order start date (ISO format). Tries starts_at then starting_date."""
-    url = f"{BASE_URL}/product/production/{po_id}/_update_starting_date"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    for payload in [{"starts_at": starts_at}, {"starting_date": starts_at}]:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.ok:
-            return response.json()
-    response.raise_for_status()
-    return response.json()
-
-
-def update_production_order_end(token: str, po_id: str, ends_at: str) -> Dict:
-    """Update production order end date (ISO format). Tries ends_at then ending_date."""
-    url = f"{BASE_URL}/product/production/{po_id}/_update_ending_date"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    for payload in [{"ends_at": ends_at}, {"ending_date": ends_at}]:
-        response = requests.post(url, headers=headers, json=payload)
-        if response.ok:
-            return response.json()
-    response.raise_for_status()
-    return response.json()
-
-
 def main():
-    print("Authenticating with Arke API...")
-    token = get_auth_token()
-
-    print("Fetching active sales orders...")
-    orders = fetch_active_orders(token)
-    print(json.dumps(orders, indent=4))
+    pass
 
 
 if __name__ == "__main__":
