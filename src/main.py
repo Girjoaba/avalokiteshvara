@@ -11,13 +11,11 @@ This script wires together the step modules:
 """
 import requests
 import json
-<<<<<<< Updated upstream:docs/main.py
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 from datetime import datetime, timedelta, timezone
 
-=======
 from real_time.advance_pipleine import move_pipeline, STATUS_BROKEN, STATUS_DONE, STATUS_IN_PROGRESS
 from real_time.robot import RobotAvalokiteshvara
 from real_time.reschedule import (
@@ -25,12 +23,14 @@ from real_time.reschedule import (
     ask_user_skip_or_restart,
     reschedule_after_failure,
 )
->>>>>>> Stashed changes:src/main.py
 from step1_api_call import (
     login,
     fetch_sales_orders,
     display_orders,
 )
+
+# direct API helper used for order confirmation
+from api import confirm_order
 
 from step2_plan_policy import (
     sort_orders_edf,
@@ -87,13 +87,17 @@ def main() -> None:
     # else:
     #     print("\n Schedule rejected — adjust and rerun.")
 
-<<<<<<< Updated upstream:docs/main.py
-=======
     # TODO: remove later
     # starts all orders
     for entry in schedule_log:
         order_id = entry["po_id"]
-        confirmed_order = confirm_order(token, order_id)
+        try:
+            confirmed_order = confirm_order(token, order_id)
+        except requests.exceptions.HTTPError as exc:
+            # Some environments forbid programmatic confirmation; this
+            # loop is only for early testing and can be removed later.
+            print(f"⚠️  could not confirm {order_id}: {exc}")
+            confirmed_order = None
 
     # 7) Real-Time pipeline with reschedule on failure
     robot = RobotAvalokiteshvara()
@@ -142,9 +146,7 @@ def main() -> None:
 
     print(f"Correct: {correct}")
     print(f"Errors: {errors}")
->>>>>>> Stashed changes:src/main.py
 
 
 if __name__ == "__main__":
     main()
-
