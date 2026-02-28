@@ -70,14 +70,14 @@ def main() -> None:
 
     # 6) Human-in-the-loop approval (this only gates the UI/flow;
     #    if you also want to confirm production orders in Arke,
-    #    call confirm_production_orders from api_call.py here.)
+    #    call confirm_production_orders from step1_api_call.py here.)
     approved = wait_for_approval()
     if not approved:
         print("❌ Planner rejected schedule. Exiting without confirmation.")
         return
 
     print("✅ Planner approved schedule.")
-    # Optional: from api_call import confirm_production_orders
+    # Optional: from step1_api_call import confirm_production_orders
     # confirm_production_orders(token, schedule_log)
 
 
