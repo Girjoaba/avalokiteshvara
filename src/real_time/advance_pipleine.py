@@ -10,7 +10,41 @@ from api import (
     schedule_phase,
     start_phase,
 )
+
+from step3_4_create_order_schedule import schedule_all_orders
 from real_time.robot import RobotAvalokiteshvara
+
+
+STATUS_IN_PROGRESS = 0
+STATUS_DONE = 1
+STATUS_BROKEN = 2
+
+def move_pipeline(token, order_id, robot) -> (bool, list):
+    status = True
+    failed_product = None
+
+    order = fetch_production_order_by_id(token, order_id)
+    print(json.dumps(obj= order, indent=4))
+    phases = order.get("phases", [])
+    ready_phase = next((p for p in phases if p.get("status") == "ready"), None)
+
+    p_id = ready_phase["id"]
+    is_last = p_id == phases[-1]["id"]
+    start_phase(token, phase_id= p_id)
+
+    # wait for RobotAvalokiteshvara
+    if not robot.is_phase_complete():
+        return STATUS_BROKEN, order
+
+    if is_last:
+        complete_order(token, order_id)
+        return STATUS_DONE, None
+    else:
+        complete_phase(token, p_id)
+
+    order = fetch_production_order_by_id(token, order_id)
+
+    return STATUS_IN_PROGRESS, None
 
 
 def main():
