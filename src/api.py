@@ -4,7 +4,7 @@ import requests
 import json
 
 # Constants
-BASE_URL = "https://hackathon1.arke.so/api"
+BASE_URL = "https://hackathon3.arke.so/api"
 USERNAME = "arke"
 PASSWORD = "arke"
 
@@ -47,6 +47,7 @@ def fetch_products(token: str) -> List[Dict]:
 def main():
     print("Authenticating with Arke API...")
     token = get_auth_token()
+    print(token)
 
     print("Fetching active sales orders...")
     orders = fetch_active_orders(token)
