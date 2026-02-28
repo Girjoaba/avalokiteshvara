@@ -86,10 +86,19 @@ def schedule_phase(token: str, prod_id: str) -> Dict:
     return response.json()
 
 
-def confirm_phase(token: str, prod_id: str) -> Dict:
+def confirm_order(token: str, prod_id: str) -> Dict:
     """Transition an order to a confirmed state after the human-in-the-loop accepts."""
 
     url = f"{BASE_URL}/product/production/{prod_id}/_start"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(url, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
+def complete_order(token: str, prod_id: str) -> Dict:
+    """Complete an order."""
+
+    url = f"{BASE_URL}/product/production/{prod_id}/_complete"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.post(url, headers=headers)
     response.raise_for_status()
