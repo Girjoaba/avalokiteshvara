@@ -68,17 +68,15 @@ def main() -> None:
     generate_gantt(schedule_log)
     send_telegram(schedule_log)
 
-    # 6) Human-in-the-loop approval (this only gates the UI/flow;
-    #    if you also want to confirm production orders in Arke,
-    #    call confirm_production_orders from step1_api_call.py here.)
-    approved = wait_for_approval()
-    if not approved:
-        print("❌ Planner rejected schedule. Exiting without confirmation.")
-        return
+    # 6) Human-in-the-loop approval 
+    # Uncomment to enable Telegram approval flow:
+    # send_telegram(schedule_log)
+    # approved = wait_for_approval()
+    # if approved:
+    #     print("\n Production confirmed. Ready for physical integration (Step 6).")
+    # else:
+    #     print("\n Schedule rejected — adjust and rerun.")
 
-    print("✅ Planner approved schedule.")
-    # Optional: from step1_api_call import confirm_production_orders
-    # confirm_production_orders(token, schedule_log)
 
 
 if __name__ == "__main__":
