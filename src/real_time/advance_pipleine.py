@@ -19,6 +19,50 @@ STATUS_IN_PROGRESS = 0
 STATUS_DONE = 1
 STATUS_BROKEN = 2
 
+def get_phase_name_from_phase(phase):
+    """Extract phase name from phase object (various possible keys)."""
+    return (
+        phase.get('phase', {}).get('name') or
+        phase.get('name') or
+        phase.get('phase_name') or
+        phase.get('production_phase', {}).get('name') or
+        '?'
+    )
+
+def extract_failed_phase_info(order):
+    """
+    Extract the failed phase information from an order object.
+    Returns (phase_id, phase_name).
+    """
+    if not isinstance(order, dict):
+        return "unknown", "Unknown Phase"
+    
+    phases = order.get("phases", [])
+    if not phases:
+        return "unknown", "Unknown Phase"
+    
+    # Try to find the phase that was being executed (status = in_progress or running)
+    for phase in phases:
+        status = phase.get("status", "").lower()
+        if status in ("in_progress", "running", "failed"):
+            phase_id = phase.get('id') or phase.get('phase_id') or "unknown"
+            phase_name = get_phase_name_from_phase(phase)
+            return phase_id, phase_name
+    
+    # If no in_progress phase found, return the last non-done phase
+    for phase in reversed(phases):
+        status = phase.get("status", "").lower()
+        if status != "done":
+            phase_id = phase.get('id') or phase.get('phase_id') or "unknown"
+            phase_name = get_phase_name_from_phase(phase)
+            return phase_id, phase_name
+    
+    # Fallback to first phase if all are done
+    phase = phases[0]
+    phase_id = phase.get('id') or phase.get('phase_id') or "unknown"
+    phase_name = get_phase_name_from_phase(phase)
+    return phase_id, phase_name
+
 def move_pipeline(token, order_id, robot) -> (bool, list):
     status = True
     failed_product = None

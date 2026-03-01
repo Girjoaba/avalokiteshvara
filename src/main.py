@@ -10,7 +10,7 @@ This script wires together the step modules:
   - step5a_gant_chart.py → Gantt chart + Telegram + approval loop
 """
 import json
-from real_time.advance_pipleine import move_pipeline, STATUS_BROKEN, STATUS_DONE, STATUS_IN_PROGRESS
+from real_time.advance_pipleine import move_pipeline, STATUS_BROKEN, STATUS_DONE, STATUS_IN_PROGRESS, extract_failed_phase_info
 from real_time.reschedule import (
     ask_user_skip_or_restart,
     reschedule_after_failure,
@@ -24,7 +24,7 @@ from step1_api_call import (
 )
 from step2_plan_policy import (
     detect_so005_conflict,
-    sort_orders_edf,
+    sort_orders_by_policy,
 )
 from step3_4_create_order_schedule import (
     schedule_all_orders,
@@ -32,6 +32,11 @@ from step3_4_create_order_schedule import (
 
 from step5a_gant_chart import (
     generate_gantt
+)
+
+from step6_telegram_bot import (
+    send_telegram,
+    wait_for_approval
 )
 
 from api import confirm_order
@@ -57,12 +62,13 @@ def main() -> None:
     display_orders(orders, " Raw Orders (unsorted)")
 
     # TODO: remove later
-    # orders = orders[:1]
+    orders = orders[:1]
 
-    # 3) Apply EDF planning policy
-    sorted_orders = sort_orders_edf(orders)
-    display_orders(sorted_orders, " EDF Sorted Schedule")
-    detect_so005_conflict(sorted_orders)
+    # 3) Apply planning policy (default: EDF)
+    selected_policy = 'EDF'
+    sorted_orders = sort_orders_by_policy(orders, selected_policy)
+    display_orders(sorted_orders, f" {selected_policy} Sorted Schedule")
+    detect_so005_conflict(sorted_orders, selected_policy)
 
     # 4) Create production orders and schedule phases
     schedule_log = schedule_all_orders(token, sorted_orders)
@@ -70,19 +76,38 @@ def main() -> None:
     # 5) Visual + messaging loop
     generate_gantt(schedule_log)
 
-    # send_telegram(schedule_log)
+    # 6) Human-in-the-loop approval BEFORE confirming orders
+    send_telegram(schedule_log)
+    approval_result = wait_for_approval()
+    
+    # approval_result is a tuple: (approved_bool, policy_override)
+    if isinstance(approval_result, tuple):
+        approved, policy_override = approval_result
+    else:
+        # Fallback for old version that just returns bool
+        approved = approval_result
+        policy_override = None
+    
+    if not approved:
+        print("\n❌ Schedule rejected — adjust and rerun.")
+        return
+    
+    # If planner selected a different policy, re-sort and re-schedule
+    if policy_override and policy_override != selected_policy:
+        print(f"\n🔄 Re-scheduling with policy: {policy_override}")
+        selected_policy = policy_override
+        sorted_orders = sort_orders_by_policy(orders, selected_policy, custom_sequence=None)
+        display_orders(sorted_orders, f" {selected_policy} Sorted Schedule")
+        detect_so005_conflict(sorted_orders, selected_policy)
+        
+        # Clear old schedule and reschedule
+        schedule_log = schedule_all_orders(token, sorted_orders)
+        generate_gantt(schedule_log)
+        send_telegram(schedule_log)
+    
+    print("\n✅ Production confirmed. Ready for physical integration (Step 7).")
 
-    # 6) Human-in-the-loop approval
-    # Uncomment to enable Telegram approval flow:
-    # send_telegram(schedule_log)
-    # approved = wait_for_approval()
-    # if approved:
-    #     print("\n Production confirmed. Ready for physical integration (Step 6).")
-    # else:
-    #     print("\n Schedule rejected — adjust and rerun.")
-
-    # TODO: remove later
-    # starts all orders
+    # Confirm all orders AFTER approval
     for entry in schedule_log:
         order_id = entry["po_id"]
         confirmed_order = confirm_order(token, order_id)
@@ -106,18 +131,8 @@ def main() -> None:
             
             if status == STATUS_BROKEN:
                 errors += 1
-                # extract failed phase info if possible from failed_order
-                failed_phase_name = "Unknown Phase"
-                failed_phase_id = "unknown"
-                
-                # Try to parse failed_order to find the failing phase?
-                # move_pipeline returns the full order object.
-                # Usually the one with status='inprogress' or 'failed'?
-                if isinstance(failed_order, dict):
-                    phases = failed_order.get("phases", [])
-                    # Maybe the last one or the one that is not done?
-                    # For now, just use placeholder.
-                    pass
+                # Extract failed phase info from the failed_order object
+                failed_phase_id, failed_phase_name = extract_failed_phase_info(failed_order)
 
                 print(json.dumps(obj= failed_order, indent=4))
                 
