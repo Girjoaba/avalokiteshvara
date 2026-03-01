@@ -342,6 +342,12 @@ def format_production_order_detail(
         lines.append("\U0001f4d0 <b>Phases:</b>")
         for ph in po.phases:
             lines.append(_format_phase_line(ph, now=now))
+
+    lines.append("")
+    lines.append(
+        '\U0001f4f9 <a href="https://olene-expository-uncrookedly.ngrok-free.dev/index.html">'
+        "Live Factory Footage</a>"
+    )
     return "\n".join(lines)
 
 

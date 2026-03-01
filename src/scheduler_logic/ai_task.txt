@@ -1,8 +1,0 @@
-
-main.py and related files were developed by other part of the team independently that makes the scheduling based on certain rules. But it just works with pending  sales orders, and does not consider already scheduled orders, and scheduled and confirmed orders. 
-
-This scheduling should become a separate module residing in @src/scheduler_logic 
-It should have following functionalities:
-It should have an exposed function that telegram will call that will look at the current state of the API, so, the scheduled orders, confirmed scheduled orders, and pending sales orders, and then run the pipeline up to scheduling phase, and send to the user on telegram the Ghant chart image, and the schedule in text format.
-The suggested schedule should be returned in a specific format, with specific dataclass Currently dataclasses are being stored here @src/telegram_control/models.py but I want them to be shared between telegram module and  @src/scheduler_logic . Then the user on telegram might either press a button '''YES' then the order will be confirmed for execution in the future (depending when was its schedule starting date), or user can say NO, and then write a comment, that will be sent to a different module that I am going to work on later called 'ai_assistant', that is going to incorporate the dataclass of the schedules and comment and other extra variables to produce a better schedule. 
-When user wants to remove a production order from the existing queue, he can also do that, and call the schedule logic to reschedule properly. 
