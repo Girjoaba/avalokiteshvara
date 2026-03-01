@@ -5,12 +5,9 @@ from datetime import datetime, timedelta, timezone
 # CREDENTIALS & CONFIG
 # ══════════════════════════════════════════════════════════════════════
 
-TELEGRAM_TOKEN = "8340867821:AAGxICij2DSYUx819dIxNZbUNeEfREzb5KI"
-
-TELEGRAM_TOKEN   = "8340867821:AAGxICij2DSYUx819dIxNZbUNeEfREzb5KI"   # from @BotFather
-TELEGRAM_CHAT_ID = "6574442552"             # arke_scheduler_bot
-GEMINI_API_KEY   = "REDACTED"        # from aistudio.google.com
-
+TELEGRAM_TOKEN   = "YOUR_TELEGRAM_BOT_TOKEN"   # from @BotFather
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"              # your personal chat ID
+GEMINI_API_KEY   = "YOUR_GEMINI_API_KEY"        # from aistudio.google.com
 # ══════════════════════════════════════════════════════════════════════
 # STEP 6 — Telegram human-in-the-loop approval
 # ══════════════════════════════════════════════════════════════════════
