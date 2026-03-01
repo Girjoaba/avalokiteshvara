@@ -14,8 +14,8 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 WorldInfo {
 }
 Viewpoint {
-  orientation 0.17698906625557795 0.38678490334179005 -0.9050261371766346 0.936251332985428
-  position -4.361235471507197 4.883564971884573 2.1172444521053984
+  orientation 0.21109020971043274 0.4063110403915119 -0.8890175824022677 1.0577176211718768
+  position -2.063646392018767 2.4840401757805517 1.116207624465197
 }
 TexturedBackground {
   texture "factory"
@@ -27,9 +27,9 @@ MetalStorageBox {
 TexturedBackgroundLight {
 }
 SolidBox {
-  translation 0 -0.6 -0.75
+  translation 0.00478279 -0.829953 -0.75
   rotation 0 0 1 -1.55
-  size 0.5 0.5 0.5
+  size 1 1 0.5
   appearance PBRAppearance {
     roughness 0.5
     metalness 0
@@ -56,18 +56,45 @@ SolidBox {
     metalness 0
   }
 }
+SolidBox {
+  translation 0.0948262 -5.15908 -0.87
+  rotation 0 0 1 -1.55
+  name "box(3)"
+  size 0.5 0.5 0.5
+  appearance PBRAppearance {
+    roughness 0.5
+    metalness 0
+  }
+}
 UR5e {
-  hidden position_0_0 2.0111707632200027e-06
-  hidden rotation_1 0 0 1 2.011159994459593e-06
-  hidden position_1_0 0.00017744616695724674
-  hidden rotation_2 0 1 0 1.5709734461669569
-  hidden position_2_0 5.435083167933757e-05
-  hidden rotation_3 0 0.9999999999999999 0 5.435083287647113e-05
-  hidden position_3_0 1.3817216388286216e-07
-  hidden rotation_4 0 1 0 1.570796138172163
-  hidden position_4_0 -8.973881863916488e-09
-  hidden position_5_0 8.752439119961123e-09
+  hidden position_0_0 9.761104235221413e-05
+  hidden rotation_1 0 0 0.9999999999999999 9.761104111460728e-05
+  hidden position_1_0 0.0009207196498725301
+  hidden rotation_2 0 1 0 1.5717167196498705
+  hidden position_2_0 0.000260500860061843
+  hidden rotation_3 0 1 0 0.00026050086082366023
+  hidden position_3_0 1.9745602970918375e-05
+  hidden rotation_4 0 1 0 1.5708157456029688
+  hidden position_4_0 -4.1871833893429665e-07
+  hidden rotation_5 0 0 -1 4.182955279236503e-07
+  hidden position_5_0 1.2363454459713394e-06
+  hidden rotation_6 0 1 0 1.2363474674637241e-06
   translation -0.1 2.45 -0.48
+}
+UR5e {
+  hidden position_0_0 0.00040328314554541355
+  hidden rotation_1 0 0 1 0.00040328314531332875
+  hidden position_1_0 0.0009716872501647854
+  hidden rotation_2 0 1 0 1.5717676872501616
+  hidden position_2_0 0.00027635798109840886
+  hidden rotation_3 0 1 0 0.00027635798183737944
+  hidden position_3_0 6.66212931788099e-06
+  hidden rotation_4 0 1 0 1.5708026621293147
+  hidden position_4_0 -1.6558128048025313e-06
+  hidden rotation_5 0 0 -1 1.6558402041303512e-06
+  hidden position_5_0 9.056110376467897e-11
+  translation 0 -5.07 -0.57
+  name "UR5e(1)"
 }
 RectangleArena {
   translation 0 0 -1
@@ -76,8 +103,8 @@ RectangleArena {
   }
 }
 DEF TARGET_BOX Solid {
-  translation 0.6656312890123254 0.0002568829150246057 -0.45061735320802837
-  rotation 3.901370819972899e-05 5.3977120516303346e-05 0.9999999977822004 1.451659688840988
+  translation -0.08510851165579601 0.0356090649074315 -0.4508629328301903
+  rotation -0.8851576588103467 0.21138996436895433 0.41449994211516844 0.0022118224601829608
   children [
     Shape {
       appearance PBRAppearance {
@@ -93,12 +120,12 @@ DEF TARGET_BOX Solid {
   }
   physics Physics {
   }
-  linearVelocity 0.2000010743983984 6.921379360712171e-08 -2.1282787656305536e-05
-  angularVelocity -2.191789838448143e-12 6.328095794436791e-06 -8.334263714880866e-12
+  linearVelocity 4.715947001854293e-06 0.3926540429463452 0.001862117154784878
+  angularVelocity 0.04084507343580453 -0.002765700428648113 0.002799772313590458
 }
-DEF SKIP_BOX Solid {
-  translation 1.664014253366994 2.6593079166605482e-05 -0.4507044988346661
-  rotation 0.707128508986216 0.0051552655578800234 0.7070662592826493 -3.1312937865531616
+DEF SKIP_BOX1 Solid {
+  translation 7.500426515487887 -0.0010888260608714578 -0.46943939776884097
+  rotation 0.00029922052683259393 -0.7070870967264119 0.7071264017911438 3.1410155431039293
   children [
     Shape {
       appearance PBRAppearance {
@@ -115,41 +142,114 @@ DEF SKIP_BOX Solid {
   }
   physics Physics {
   }
-  linearVelocity 0.20000107385251834 6.920590829855944e-08 -2.7551067320580477e-05
-  angularVelocity -2.190758144226367e-12 6.328095798186716e-06 -8.334579206298595e-12
+  linearVelocity 3.3280886414388526e-07 6.356904510084053e-07 -8.526868535989249e-05
+  angularVelocity -2.1487941620662562e-05 1.2735843280786684e-05 1.5387070551042526e-07
+}
+DEF SKIP_BOX2 Solid {
+  translation 1.9262232725603847 4.7307158707626556e-05 -0.4558411120779302
+  rotation 0.9998360471094547 0.013974511399310746 0.011514856998272607 1.5709328414436712
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.1 1 0.1
+      }
+      geometry Box {
+        size 0.1 0.1 0.1
+      }
+    }
+  ]
+  name "solid(3)"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+  }
+  linearVelocity 0.2000015949642386 -4.275980185632024e-06 -0.0004558390244762582
+  angularVelocity -3.258840701650302e-06 1.3910236449726656e-05 9.730864578432268e-07
+}
+DEF SKIP_BOX3 Solid {
+  translation 0.9269384139322748 5.017620459553816e-05 -0.4534027491615198
+  rotation 0.001819714165368921 -0.7070859813690388 0.7071252389723759 -3.141431270613214
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.1 1 0.1
+      }
+      geometry Box {
+        size 0.1 0.1 0.1
+      }
+    }
+  ]
+  name "solid(4)"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+  }
+  linearVelocity 0.2000016461671298 -5.1386610651306186e-06 -0.00043484939365722537
+  angularVelocity -5.271700922806061e-06 1.3910292561473307e-05 9.780160993097344e-07
+}
+DEF SKIP_BOX4 Solid {
+  translation -1.0731454734858272 5.626170379080693e-05 -0.4485223286100302
+  rotation 0.5237343663608423 0.6708283565600319 -0.5250634528583892 1.9620680150903287
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.1 1 0.1
+      }
+      geometry Box {
+        size 0.1 0.1 0.1
+      }
+    }
+  ]
+  name "solid(2)"
+  boundingObject Box {
+    size 0.1 0.1 0.1
+  }
+  physics Physics {
+  }
+  linearVelocity 0.20000174865020867 -6.8653300287670335e-06 -0.00039283832439141586
+  angularVelocity -9.300470867355415e-06 1.391040556664496e-05 9.878828550015133e-07
 }
 ConveyorBelt {
-  hidden translation_1 -2.132278091898643e-06 -7.75062945213012e-08 0.37482948015645945
-  hidden rotation_1 -0.09980039822441936 0.9949996878278792 0.003937224488224145 8.772745793482039e-05
-  hidden linearVelocity_1 3.248385804690509e-15 -1.9710831374249233e-16 9.663381206337363e-16
-  hidden angularVelocity_1 -2.1720710921101072e-12 6.278432112898499e-06 -7.897894518227874e-12
+  hidden translation_1 -0.00029631655974590027 3.22970826198421e-06 0.3741343436184893
+  hidden rotation_1 -0.023837829915897297 0.999712075907111 0.002742836195501587 0.0024408094434204635
+  hidden linearVelocity_1 -9.579396284679058e-07 -6.524509693473874e-06 7.114112292902064e-05
+  hidden angularVelocity_1 8.916379093302032e-06 2.1134425451835784e-05 9.4314151456057e-07
   translation 0.05 -0.08 -1
-  size 7 0.3 0.5
+  size 15 0.3 0.5
   appearance HammeredCopper {
   }
   borderHeight 0
   speed 0.2
 }
 ConveyorBelt {
-  hidden translation_1 0.012244649606706154 0.0019143987302530086 0.3869315407889541
-  hidden rotation_1 -0.7460500955138794 0.5199177870318137 0.4160465715658205 0.000677061098228316
+  hidden translation_1 0 0 0.3749529120153945
   translation 0.15 2.85 -1.04
   name "conveyor belt(1)"
-  size 7 0.3 0.5
+  size 15 0.3 0.5
+  borderHeight 0
+  speed 0.2
+}
+ConveyorBelt {
+  hidden translation_1 0 0 0.3749529120153945
+  translation 0.25 -4.53 -1.05
+  name "conveyor belt(2)"
+  size 15 0.3 0.5
   borderHeight 0
   speed 0.2
 }
 Robot {
-  translation 0 -0.49 -0.38
+  translation 0 -0.57 -0.38
   children [
     Camera {
-      translation -1.2116e-06 0.275773 -0.0263077
-      rotation -0.1294279597735375 0.1294279597735375 0.9831056944488314 1.58784
+      translation -0.140001 0.395656 0.0347439
+      rotation -0.3574069463669815 0.35740494636728165 0.8628568705184134 1.71778
       name "color_sensor"
     }
     SliderJoint {
       jointParameters JointParameters {
-        position 5.551115121586557e-17
+        position -0.2068929264841381
         axis 0 -1 0
         minStop -10
         maxStop 10
@@ -162,23 +262,25 @@ Robot {
         }
       ]
       endPoint Solid {
-        translation 4.372442683833874e-06 -6.375011629700096e-12 -0.0010471872815165373
-        rotation -0.4583894909214531 -0.4714337268944652 -0.7534117836609445 7.644745909202539e-07
+        translation 4.372442695216253e-06 0.20689292647776317 -0.003608497233218211
+        rotation -0.4583894863051319 -0.47143373133559635 -0.7534117836906417 7.644745909202539e-07
         children [
           Shape {
             appearance PBRAppearance {
             }
             geometry Box {
-              size 0.3 0.6 0.2
+              size 0.3 0.7 0.2
             }
           }
         ]
         boundingObject Box {
-          size 0.3 0.3 0.2
+          size 0.3 0.7 0.2
         }
         physics Physics {
+          density 600
         }
-        linearVelocity -2.2578736500769875e-36 5.55105961005648e-16 -2.169823082012035e-06
+        linearVelocity 3.3593125556454585e-05 0.3196613557350232 4.489514905644105e-05
+        angularVelocity 9.640009982161217e-06 3.331808294651359e-06 -2.2088404378338488e-07
       }
     }
   ]
@@ -187,8 +289,8 @@ Robot {
   supervisor TRUE
 }
 Transform {
-  translation 0 -0.61 -0.42
-  scale 5 5 6
+  translation 0 -0.85 -0.42
+  scale 7 8 6
   children [
     Shape {
       appearance Copper {
