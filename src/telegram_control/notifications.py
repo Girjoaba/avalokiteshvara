@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 from telegram import Bot
 
-from .formatters import format_notification
-from .keyboards import notification_action_keyboard
-from .models import Notification, NotificationType
+from .formatters import format_factory_failure_caption, format_notification
+from .keyboards import factory_failure_keyboard, notification_action_keyboard
+from .models import Notification, NotificationType, ProductionOrder, SalesOrder
 
 if TYPE_CHECKING:
     pass
@@ -156,6 +157,41 @@ class NotificationDispatcher:
             ),
             chat_id=chat_id,
         )
+
+    async def notify_factory_failure(
+        self,
+        *,
+        po: ProductionOrder,
+        so: SalesOrder | None = None,
+        image_data: bytes,
+        description: str = "",
+        chat_id: int | None = None,
+    ) -> None:
+        """Send the failure photo with action buttons to subscribers."""
+        caption = format_factory_failure_caption(
+            po_name=po.internal_id,
+            product_name=po.product_name,
+            quantity=po.quantity,
+            so_name=so.internal_id if so else None,
+            customer=so.customer.name if so else None,
+            description=description,
+        )
+        keyboard = factory_failure_keyboard(
+            production_order_id=po.id,
+            sales_order_id=so.id if so else "",
+        )
+        targets = {chat_id} if chat_id else self._subscribed_chats
+        for cid in targets:
+            try:
+                await self._bot.send_photo(
+                    chat_id=cid,
+                    photo=BytesIO(image_data),
+                    caption=caption,
+                    parse_mode="HTML",
+                    reply_markup=keyboard,
+                )
+            except Exception:
+                logger.exception("Failed to send factory failure to chat %s", cid)
 
     async def notify_deadline_at_risk(
         self,

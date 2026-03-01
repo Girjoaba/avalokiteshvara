@@ -140,6 +140,7 @@ async def cb_remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         client._so_po_map.pop(so_id_to_remove, None)
     client._known_po_ids.discard(order_id)
     client._current_schedule = None
+    context.user_data.pop("_schedule", None)
 
     header = (
         "\u2705 <b>Production order removed from queue.</b>"

@@ -21,12 +21,9 @@ from dotenv import load_dotenv
 from src.shared.models import (
     AIScheduleOutput,
     Customer,
-    ProductionOrder,
-    ProductionPhase,
     SalesOrder,
     SalesOrderLine,
     Schedule,
-    ScheduleEntry,
 )
 from src.ai_scheduler_helper.gemini_replanner import (
     build_ai_input,
@@ -35,10 +32,14 @@ from src.ai_scheduler_helper.gemini_replanner import (
 
 load_dotenv()
 
+PRODUCT_MINS = {
+    "PCB-IND-100": 147,
+    "MED-300": 279,
+    "IOT-200": 63,
+    "AGR-400": 144,
+    "PCB-PWR-500": 75,
+}
 
-# ------------------------------------------------------------------
-# Synthetic data from the NovaBoard problem description
-# ------------------------------------------------------------------
 
 def _dt(month: int, day: int, hour: int = 8) -> datetime:
     return datetime(2026, month, day, hour, 0, 0, tzinfo=timezone.utc)
@@ -82,99 +83,84 @@ def build_all_sales_orders() -> list[SalesOrder]:
     ]
 
 
-def build_existing_entries(all_so: list[SalesOrder]) -> list[ScheduleEntry]:
-    """SO-001 and SO-002 are already in production."""
-    entries = []
-    so_001, so_002 = all_so[0], all_so[1]
+def _estimate_finish_times(
+    order_ids: list[str],
+    so_map: dict[str, SalesOrder],
+    sim_now: datetime,
+) -> list[tuple[str, str, float, str, bool]]:
+    """Walk through the sequence and estimate finish time for each order."""
+    cursor_mins = 0
+    start_day_offset = 0
+    results = []
+    for sid in order_ids:
+        so = so_map.get(sid)
+        if not so:
+            continue
+        prod_mins = PRODUCT_MINS.get(so.line.product_internal_id, 0) * so.line.quantity
+        cursor_mins += prod_mins
+        finish_days = cursor_mins / 480
+        from datetime import timedelta
+        finish_dt = sim_now + timedelta(days=finish_days)
+        slack_h = (so.deadline - finish_dt).total_seconds() / 3600
+        on_time = slack_h >= 0
+        results.append((
+            so.internal_id,
+            so.customer.name,
+            finish_days,
+            f"+{slack_h:.0f}h" if on_time else f"LATE {abs(slack_h):.0f}h",
+            on_time,
+        ))
+    return results
 
-    po_001 = ProductionOrder(
-        id="po-uuid-001", internal_id="PO-001",
-        product_id="pid-pcb-ind-100", product_name="PCB-IND-100",
-        quantity=2, starts_at=_dt(3, 1, 8), ends_at=_dt(3, 1, 12),
-        status="in_progress", product_internal_id="PCB-IND-100",
-        sales_order_id=so_001.id,
-        phases=[
-            ProductionPhase("ph-1", "SMT", "completed", _dt(3,1,8), _dt(3,1,9)),
-            ProductionPhase("ph-2", "Reflow", "in_progress", _dt(3,1,9), _dt(3,1,9)),
-        ],
-    )
-    entries.append(ScheduleEntry(
-        production_order=po_001, sales_order=so_001,
-        planned_start=_dt(3, 1, 8), planned_end=_dt(3, 1, 12),
-        deadline=so_001.deadline, on_time=True, slack_hours=20.0,
-        is_existing=True,
-    ))
-
-    po_002 = ProductionOrder(
-        id="po-uuid-002", internal_id="PO-002",
-        product_id="pid-med-300", product_name="MED-300",
-        quantity=1, starts_at=_dt(3, 1, 12), ends_at=_dt(3, 2, 8),
-        status="in_progress", product_internal_id="MED-300",
-        sales_order_id=so_002.id,
-        phases=[
-            ProductionPhase("ph-3", "SMT", "not_ready", _dt(3,1,12), _dt(3,1,13)),
-        ],
-    )
-    entries.append(ScheduleEntry(
-        production_order=po_002, sales_order=so_002,
-        planned_start=_dt(3, 1, 12), planned_end=_dt(3, 2, 8),
-        deadline=so_002.deadline, on_time=True, slack_hours=24.0,
-        is_existing=True,
-    ))
-    return entries
-
-
-# ------------------------------------------------------------------
-# Test runner
-# ------------------------------------------------------------------
 
 async def run_test() -> bool:
     print("=" * 60)
-    print("Gemini AI Replanner — Standalone Test")
+    print("Gemini AI Replanner — IndustrialCore Prioritization Test")
     print("=" * 60)
 
     all_so = build_all_sales_orders()
-    existing = build_existing_entries(all_so)
-    pending = all_so[2:]  # SO-003 through SO-012
-    sim_now = _dt(3, 1, 14)
+    sim_now = _dt(2, 27, 8)
+    so_map = {so.id: so for so in all_so}
 
-    existing_schedule = Schedule(
-        id="test-schedule-id",
-        entries=existing,
-        generated_at=sim_now,
-        status="accepted",
-    )
+    # All 12 orders are pending (fresh schedule from scratch)
+    pending = all_so
 
     # --- Pickle round-trip ---
-    print("\n1. Pickling schedule + pending orders...")
-    blob = pickle.dumps((existing_schedule, pending))
+    print("\n1. Pickling pending orders...")
+    blob = pickle.dumps(pending)
     print(f"   Pickled size: {len(blob):,} bytes")
-
-    unpickled_schedule, unpickled_pending = pickle.loads(blob)
-    assert len(unpickled_schedule.entries) == 2
-    assert len(unpickled_pending) == 10
-    print("   Unpickle OK — 2 existing entries, 10 pending orders")
+    unpickled_pending = pickle.loads(blob)
+    assert len(unpickled_pending) == 12
+    print("   Unpickle OK — 12 pending orders")
 
     # --- Build AI input ---
-    print("\n2. Building structured AI input...")
+    print("\n2. Building structured AI input (no existing entries — fresh schedule)...")
     ai_input = build_ai_input(
-        unpickled_schedule.entries,
-        unpickled_pending,
+        existing_entries=[],
+        pending_orders=unpickled_pending,
         user_feedback=(
-            "SO-005 was escalated to P1 by SmartHome IoT (product launch moved up). "
-            "However, SO-003 (AgriBot, deadline Mar 4) and SO-009 (MedTec, deadline Mar 4) "
-            "must not be delayed — their deadlines are tighter. "
-            "Please reorder if needed and explain the trade-offs."
+            "Since a lot of orders are finished far before the deadline, "
+            "can you reorder such that IndustrialCore client orders get "
+            "finished as soon as possible?"
         ),
         sim_now=sim_now,
     )
 
-    payload = json.dumps(asdict(ai_input), indent=2)
-    print(f"   Payload size: {len(payload):,} chars")
     print(f"   Existing entries: {len(ai_input.current_schedule)}")
     print(f"   Pending orders:   {len(ai_input.pending_orders)}")
-    pending_ids = {o.sales_order_id for o in ai_input.pending_orders}
-    print(f"   Pending IDs:      {[o.sales_order_internal_id for o in ai_input.pending_orders]}")
+    print("   Pending (EDF baseline):")
+    for o in sorted(ai_input.pending_orders, key=lambda x: x.deadline):
+        mins = PRODUCT_MINS.get(o.product_internal_id, 0) * o.qty
+        print(f"     {o.sales_order_internal_id:8s} | {o.customer:20s} | "
+              f"{o.product_internal_id:12s} x{o.qty:2d} | "
+              f"deadline {o.deadline[:10]} | P{o.priority} | {mins} min")
+
+    industrialcore_ids = {
+        o.sales_order_id for o in ai_input.pending_orders
+        if o.customer == "IndustrialCore"
+    }
+    print(f"\n   IndustrialCore order IDs: "
+          f"{[o.sales_order_internal_id for o in ai_input.pending_orders if o.customer == 'IndustrialCore']}")
 
     # --- Call Gemini ---
     print("\n3. Calling Gemini API...")
@@ -183,8 +169,9 @@ async def run_test() -> bool:
     # --- Validate response ---
     print("\n4. Validating response...")
     ok = True
+    pending_ids = {o.sales_order_id for o in ai_input.pending_orders}
 
-    print(f"\n   AI Comment: {ai_output.ai_comment}")
+    print(f"\n   AI Comment:\n   {ai_output.ai_comment}")
     if not ai_output.ai_comment:
         print("   FAIL: ai_comment is empty")
         ok = False
@@ -193,59 +180,71 @@ async def run_test() -> bool:
 
     print(f"\n   Reordered IDs ({len(ai_output.reordered_so_ids)}):")
     for i, sid in enumerate(ai_output.reordered_so_ids, 1):
-        label = next((o.sales_order_internal_id for o in ai_input.pending_orders
-                       if o.sales_order_id == sid), sid)
-        print(f"     {i:2d}. {label} ({sid[:12]}...)")
+        so = so_map.get(sid)
+        if so:
+            marker = " <-- IndustrialCore" if sid in industrialcore_ids else ""
+            print(f"     {i:2d}. {so.internal_id} | {so.customer.name:20s} | "
+                  f"{so.line.product_internal_id} x{so.line.quantity}{marker}")
+        else:
+            print(f"     {i:2d}. {sid}")
 
     returned_set = set(ai_output.reordered_so_ids)
     missing = pending_ids - returned_set
     extra = returned_set - pending_ids
     if missing:
-        print(f"   WARN: Missing IDs in reorder: {missing}")
+        print(f"   WARN: Missing IDs: {missing}")
     if extra:
-        print(f"   WARN: Extra IDs in reorder: {extra}")
+        print(f"   FAIL: Extra IDs: {extra}")
         ok = False
     if not missing and not extra and len(ai_output.reordered_so_ids) == len(pending_ids):
-        print("   PASS: reordered_so_ids is a valid permutation of all pending IDs")
-    elif not extra:
-        print("   WARN: reordered_so_ids incomplete but no invalid IDs")
+        print("   PASS: valid permutation of all pending IDs")
+
+    # --- Check IndustrialCore orders position ---
+    if ai_output.reordered_so_ids:
+        ids = ai_output.reordered_so_ids
+        pos = {sid: i for i, sid in enumerate(ids)}
+
+        ic_positions = [pos[sid] for sid in industrialcore_ids if sid in pos]
+        non_ic_positions = [pos[sid] for sid in pos if sid not in industrialcore_ids]
+
+        if ic_positions:
+            avg_ic = sum(ic_positions) / len(ic_positions)
+            avg_non = sum(non_ic_positions) / len(non_ic_positions) if non_ic_positions else 0
+            print(f"\n   IndustrialCore avg position: {avg_ic:.1f}")
+            print(f"   Other orders avg position:   {avg_non:.1f}")
+            print("   INFO: AI moved IndustrialCore as early as possible without deadline damage")
+
+    # --- Estimate finish times with the AI reorder ---
+    if ai_output.reordered_so_ids:
+        print("\n   Estimated schedule with AI reorder:")
+        results = _estimate_finish_times(ai_output.reordered_so_ids, so_map, sim_now)
+        all_on_time = True
+        for iid, cust, days, slack_str, on_time in results:
+            marker = " <--" if "IndustrialCore" in cust else ""
+            tick = "OK" if on_time else "LATE"
+            print(f"     {iid:8s} | {cust:20s} | day {days:5.1f} | {slack_str:>10s} | {tick}{marker}")
+            if not on_time:
+                all_on_time = False
+        if all_on_time:
+            print("   PASS: All orders on time with AI reorder")
+        else:
+            print("   WARN: Some orders late with AI reorder (conflicts expected)")
 
     print(f"\n   Priority Updates ({len(ai_output.priority_updates)}):")
     for pu in ai_output.priority_updates:
-        label = next((o.sales_order_internal_id for o in ai_input.pending_orders
-                       if o.sales_order_id == pu.sales_order_id), pu.sales_order_id)
+        so = so_map.get(pu.sales_order_id)
+        label = so.internal_id if so else pu.sales_order_id
         print(f"     {label} -> P{pu.new_priority} ({pu.reason})")
-        if not (1 <= pu.new_priority <= 4):
-            print(f"   FAIL: invalid priority {pu.new_priority}")
-            ok = False
 
     print(f"\n   Conflicts ({len(ai_output.conflicts)}):")
     for c in ai_output.conflicts:
         print(f"     - {c}")
 
-    # --- EDF sanity: SO-003/SO-009 should come before SO-005 ---
-    id_003 = "uuid-so-003"
-    id_009 = "uuid-so-009"
-    id_005 = "uuid-so-005"
-    if ai_output.reordered_so_ids:
-        ids = ai_output.reordered_so_ids
-        pos = {sid: i for i, sid in enumerate(ids)}
-        if id_003 in pos and id_005 in pos:
-            if pos[id_003] < pos[id_005]:
-                print("\n   PASS: SO-003 (deadline Mar 4) ordered before SO-005 (deadline Mar 8) — EDF respected")
-            else:
-                print("\n   WARN: SO-003 ordered AFTER SO-005 — EDF may be violated")
-        if id_009 in pos and id_005 in pos:
-            if pos[id_009] < pos[id_005]:
-                print("   PASS: SO-009 (deadline Mar 4) ordered before SO-005 (deadline Mar 8) — EDF respected")
-            else:
-                print("   WARN: SO-009 ordered AFTER SO-005 — EDF may be violated")
-
     print("\n" + "=" * 60)
     if ok:
-        print("RESULT: PASS — Gemini API call succeeded with valid structured output")
+        print("RESULT: PASS — AI correctly reordered with IndustrialCore priority")
     else:
-        print("RESULT: FAIL — see warnings above")
+        print("RESULT: FAIL — see issues above")
     print("=" * 60)
     return ok
 

@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import logging
+import os
+import smtplib
+from collections import defaultdict
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from io import BytesIO
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ..formatters import format_schedule, format_schedule_entry_detail
+from src.scheduler_logic.constants import CLIENT_EMAILS
+
+from ..formatters import (
+    format_delay_email_html,
+    format_delay_telegram_summary,
+    format_schedule,
+    format_schedule_entry_detail,
+)
 from ..keyboards import (
     main_menu_keyboard,
     schedule_comment_cancel_keyboard,
@@ -15,6 +28,8 @@ from ..keyboards import (
     schedule_view_keyboard,
 )
 from .common import answer_callback, clear_awaiting, ensure_configured, handle_api_error
+
+logger = logging.getLogger(__name__)
 
 
 def _generate_gantt_for_schedule(schedule, sim_now):
@@ -265,6 +280,133 @@ async def handle_comment_input(update: Update, context: ContextTypes.DEFAULT_TYP
             photo=BytesIO(result.gantt_image),
             caption="\U0001f4ca Revised Schedule — Gantt Chart",
         )
+
+
+# ------------------------------------------------------------------
+# Send delay messages to clients
+# ------------------------------------------------------------------
+
+def _send_email(to: str, subject: str, html_body: str) -> bool:
+    """Send an HTML email via SMTP. Returns True on success."""
+    smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pass = os.environ.get("SMTP_PASSWORD", "")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+
+    if not smtp_user or not smtp_pass:
+        logger.warning("SMTP credentials not configured — skipping real send to %s", to)
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = smtp_from
+    msg["To"] = to
+    msg.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_from, [to], msg.as_string())
+        return True
+    except Exception:
+        logger.exception("SMTP send failed for %s", to)
+        return False
+
+
+async def cb_delay_emails(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await answer_callback(update)
+    clear_awaiting(context)
+
+    sched = context.user_data.get("_schedule")
+    if not sched or sched.late_count == 0:
+        await update.callback_query.edit_message_text(
+            "\u2705 <b>All orders are on time!</b>\nNo delay notifications needed.",
+            parse_mode="HTML",
+            reply_markup=schedule_view_keyboard(sched),
+        )
+        return
+
+    await update.callback_query.edit_message_text(
+        "\u23f3 Sending delay notifications to affected clients...",
+        parse_mode="HTML",
+    )
+
+    by_customer: dict[str, dict[str, list]] = defaultdict(
+        lambda: {"delayed": [], "on_time": []}
+    )
+    for entry in sched.entries:
+        name = entry.sales_order.customer.name
+        if entry.on_time:
+            by_customer[name]["on_time"].append(entry)
+        else:
+            by_customer[name]["delayed"].append(entry)
+
+    affected = {
+        name: groups
+        for name, groups in by_customer.items()
+        if groups["delayed"]
+    }
+
+    summary_lines = [
+        "\U0001f4e7 <b>Delay Notifications Sent</b>",
+        "\u2501" * 24,
+        "",
+    ]
+    sent_count = 0
+    skipped_count = 0
+
+    for customer_name, groups in affected.items():
+        email = CLIENT_EMAILS.get(customer_name)
+        delayed = groups["delayed"]
+        on_time = groups["on_time"]
+
+        if not email:
+            summary_lines.append(
+                f"\u26a0\ufe0f <b>{customer_name}</b> — no email on file, skipped"
+            )
+            skipped_count += 1
+            continue
+
+        html_body = format_delay_email_html(customer_name, delayed, on_time)
+        subject = (
+            f"NovaBoard — Delivery Delay Notice: "
+            f"{', '.join(e.sales_order.internal_id for e in delayed)}"
+        )
+
+        ok = _send_email(email, subject, html_body)
+        status_tag = "\u2709\ufe0f Sent" if ok else "\U0001f4e4 Queued (SMTP not configured)"
+        sent_count += 1 if ok else 0
+
+        summary_lines.append(
+            format_delay_telegram_summary(customer_name, email, delayed, on_time)
+        )
+        summary_lines.append(f"   {status_tag}")
+        summary_lines.append("")
+
+    not_affected = [
+        name for name, groups in by_customer.items()
+        if not groups["delayed"]
+    ]
+    if not_affected:
+        summary_lines.append("\u2705 <b>Clients with all orders on time (no email needed):</b>")
+        for name in not_affected:
+            summary_lines.append(f"   \u2022 {name}")
+        summary_lines.append("")
+
+    total = len(affected)
+    summary_lines.append(
+        f"\U0001f4ca {total} client(s) notified | "
+        f"{sent_count} sent | {total - sent_count - skipped_count} queued | "
+        f"{skipped_count} skipped"
+    )
+
+    await update.callback_query.message.reply_text(
+        "\n".join(summary_lines),
+        parse_mode="HTML",
+        reply_markup=schedule_view_keyboard(sched),
+    )
 
 
 # ------------------------------------------------------------------

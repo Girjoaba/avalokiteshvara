@@ -432,6 +432,103 @@ def _format_schedule_entry_compact(entry: ScheduleEntry, index: int) -> str:
     )
 
 
+def format_delay_email_html(
+    customer_name: str,
+    delayed_entries: list[ScheduleEntry],
+    on_time_entries: list[ScheduleEntry],
+) -> str:
+    """Build an HTML email body for a customer whose orders are delayed."""
+    lines = [
+        "<html><body style='font-family: Arial, sans-serif; color: #333;'>",
+        "<h2 style='color: #1a237e;'>NovaBoard Manufacturing</h2>",
+        "<hr>",
+        f"<p>Dear <b>{customer_name}</b>,</p>",
+        "<p>We sincerely apologize for the inconvenience, but we must inform you "
+        "that the following order(s) will not meet the originally agreed delivery deadline:</p>",
+        "<table style='border-collapse: collapse; width: 100%;'>",
+        "<tr style='background: #e8eaf6;'>"
+        "<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Order</th>"
+        "<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Product</th>"
+        "<th style='padding: 8px; border: 1px solid #ccc; text-align: right;'>Qty</th>"
+        "<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Deadline</th>"
+        "<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Est. Completion</th>"
+        "<th style='padding: 8px; border: 1px solid #ccc; text-align: right;'>Delay</th>"
+        "</tr>",
+    ]
+    for e in delayed_entries:
+        delay_h = abs(e.slack_hours)
+        delay_str = f"{delay_h:.0f}h" if delay_h < 24 else f"{delay_h / 24:.1f} days"
+        lines.append(
+            f"<tr>"
+            f"<td style='padding: 8px; border: 1px solid #ccc;'>{e.sales_order.internal_id}</td>"
+            f"<td style='padding: 8px; border: 1px solid #ccc;'>"
+            f"{e.sales_order.line.product_internal_id} ({e.sales_order.line.product_name})</td>"
+            f"<td style='padding: 8px; border: 1px solid #ccc; text-align: right;'>"
+            f"{e.sales_order.line.quantity}</td>"
+            f"<td style='padding: 8px; border: 1px solid #ccc;'>"
+            f"{e.deadline.strftime('%b %d, %Y')}</td>"
+            f"<td style='padding: 8px; border: 1px solid #ccc;'>"
+            f"{e.planned_end.strftime('%b %d, %Y')}</td>"
+            f"<td style='padding: 8px; border: 1px solid #ccc; text-align: right; "
+            f"color: #c62828; font-weight: bold;'>{delay_str}</td>"
+            f"</tr>"
+        )
+    lines.append("</table>")
+
+    if on_time_entries:
+        lines.append(
+            "<p>We would like to reassure you that the following order(s) "
+            "remain on track and will be delivered on time:</p>"
+        )
+        lines.append(
+            "<ul style='color: #2e7d32;'>"
+        )
+        for e in on_time_entries:
+            lines.append(
+                f"<li><b>{e.sales_order.internal_id}</b> — "
+                f"{e.sales_order.line.product_internal_id} x{e.sales_order.line.quantity} "
+                f"(deadline: {e.deadline.strftime('%b %d, %Y')}) — on schedule</li>"
+            )
+        lines.append("</ul>")
+
+    lines.extend([
+        "<p>We understand this may impact your plans and we are doing everything possible "
+        "to expedite production. Our scheduling team is actively working to minimize the delay.</p>",
+        "<p>Please do not hesitate to reach out if you have any questions or need further assistance.</p>",
+        "<p>With sincere apologies,<br>"
+        "<b>NovaBoard Manufacturing — Operations Team</b></p>",
+        "</body></html>",
+    ])
+    return "\n".join(lines)
+
+
+def format_delay_telegram_summary(
+    customer_name: str,
+    email: str,
+    delayed_entries: list[ScheduleEntry],
+    on_time_entries: list[ScheduleEntry],
+) -> str:
+    """Build a Telegram message summarising what was sent to one customer."""
+    lines = [
+        f"\U0001f464 <b>{customer_name}</b>  \u2192  <code>{email}</code>",
+    ]
+    for e in delayed_entries:
+        delay_h = abs(e.slack_hours)
+        delay_str = f"{delay_h:.0f}h" if delay_h < 24 else f"{delay_h / 24:.1f} days"
+        lines.append(
+            f"   \u274c {e.sales_order.internal_id} — "
+            f"{e.sales_order.line.product_internal_id} x{e.sales_order.line.quantity} "
+            f"| late by <b>{delay_str}</b>"
+        )
+    for e in on_time_entries:
+        lines.append(
+            f"   \u2705 {e.sales_order.internal_id} — "
+            f"{e.sales_order.line.product_internal_id} x{e.sales_order.line.quantity} "
+            f"| on time"
+        )
+    return "\n".join(lines)
+
+
 def format_schedule_entry_detail(entry: ScheduleEntry, index: int) -> str:
     so = entry.sales_order
     po = entry.production_order
@@ -472,6 +569,7 @@ _NOTIF_ICON: dict[NotificationType, str] = {
     NotificationType.DEADLINE_AT_RISK: "\u26a0\ufe0f",
     NotificationType.SCHEDULE_PROPOSED: "\U0001f4c5",
     NotificationType.PRIORITY_CHANGED: "\U0001f504",
+    NotificationType.FACTORY_FAILURE: "\U0001f6a8",
 }
 
 _NOTIF_CATEGORY: dict[NotificationType, str] = {
@@ -481,7 +579,38 @@ _NOTIF_CATEGORY: dict[NotificationType, str] = {
     NotificationType.DEADLINE_AT_RISK: "Deadline Warning",
     NotificationType.SCHEDULE_PROPOSED: "Schedule Update",
     NotificationType.PRIORITY_CHANGED: "Priority Change",
+    NotificationType.FACTORY_FAILURE: "Factory Failure",
 }
+
+
+def format_factory_failure_caption(
+    po_name: str,
+    product_name: str,
+    quantity: int,
+    so_name: str | None = None,
+    customer: str | None = None,
+    description: str = "",
+) -> str:
+    """Build a short caption for the factory failure photo (max 1024 chars)."""
+    lines = [
+        "\U0001f6a8 <b>Factory Failure Detected</b>",
+        "\u2501" * 24,
+        "",
+        f"\U0001f3ed Production Order: <b>{po_name}</b>",
+        f"\U0001f4e6 {product_name} \u00d7 {quantity}",
+    ]
+    if so_name:
+        lines.append(f"\U0001f4cb Sales Order: <b>{so_name}</b>")
+    if customer:
+        lines.append(f"\U0001f464 Customer: {customer}")
+    if description:
+        lines.append(f"\n\U0001f4dd {description}")
+    lines.append(
+        "\n\u26a0\ufe0f <b>Choose an action:</b>\n"
+        "\u2022 <b>Cancel</b> \u2014 remove this order entirely\n"
+        "\u2022 <b>Restart</b> \u2014 re-execute from the beginning"
+    )
+    return "\n".join(lines)
 
 
 def format_notification(n: Notification) -> str:

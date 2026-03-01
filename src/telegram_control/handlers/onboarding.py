@@ -48,7 +48,12 @@ async def handle_api_url_input(update: Update, context: ContextTypes.DEFAULT_TYP
 
     context.user_data["api_base_url"] = url
     context.user_data["api_client"] = client
+    context.bot_data["api_client"] = client
     clear_awaiting(context)
+
+    dispatcher = context.bot_data.get("notification_dispatcher")
+    if dispatcher and update.effective_chat:
+        dispatcher.subscribe(update.effective_chat.id)
 
     await update.message.reply_text(  # type: ignore[union-attr]
         format_connected(url),

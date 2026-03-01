@@ -332,6 +332,12 @@ async def cb_confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await handle_api_error(update, exc)
         return
 
+    po_id = getattr(client, "_so_po_map", {}).pop(order_id, None)
+    if po_id:
+        client._known_po_ids.discard(po_id)
+    client._current_schedule = None
+    context.user_data.pop("_schedule", None)
+
     await update.callback_query.edit_message_text(  # type: ignore[union-attr]
         "\u2705 Sales order deleted.",
         parse_mode="HTML",

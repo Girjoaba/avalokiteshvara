@@ -1,0 +1,55 @@
+2-MINUTE DEMO SCRIPT — NovaBoard Production Scheduling Agent
+=============================================================
+
+STAGE 1 — Intro + Read Orders [0:00 – 0:30]
+---------------------------------------------
+SHOW: Open Telegram, bot main menu is visible (Dashboard, Sales Orders, Production, Schedule buttons)
+SAY:  "This is our Telegram-based production scheduling agent for NovaBoard Electronics — built in 24 hours for the Arke hackathon."
+DO:   Tap "Sales Orders"
+SHOW: Paginated list of 12 sales orders pulled live from Arke API, with statuses (pending, scheduled, in production, completed)
+SAY:  "The agent reads all accepted sales orders from the Arke API — products, quantities, deadlines, priorities. We can drill into any order for full details."
+DO:   Tap one order to show detail view, then go back to menu
+SAY:  "Time is configurable for this demo — we're starting at February 27, 8 AM."
+
+
+STAGE 2 — Generate Schedule + Gantt + Approve [0:30 – 1:00]
+-------------------------------------------------------------
+DO:   Tap "New Schedule"
+SHOW: Loading message "Computing new schedule (EDF)... Creating production orders and assigning phase dates."
+SAY:  "The agent applies Earliest Deadline First policy — sorting by deadline, breaking ties by priority. It creates production orders in Arke, calls _schedule to expand BOM phases, and assigns concrete start/end dates — all through the Arke API."
+SHOW: Schedule appears: 12 orders listed with start/end dates, deadlines, slack. Gantt chart image below.
+SAY:  "Here's our proposed schedule with the Gantt chart. All 12 orders are on time. Notice the Approve, Reject, and Comment buttons — the planner stays in the loop."
+DO:   Briefly show Arke web tenant (hackathon1.arke.so) — production orders are visible there too, proving real API integration
+SAY:  "And these production orders are live in Arke — same data, same system."
+
+
+STAGE 3 — SO-005 Conflict + AI Reschedule [1:00 – 1:30]
+---------------------------------------------------------
+SAY:  "Now the critical test from the challenge. SmartHome IoT just escalated SO-005 from P3 to P1. A naive priority-first approach would push SO-003 — AgriBot, deadline March 4 — one day late. Let's ask the AI to handle it."
+DO:   Tap "Comment" button, type: "SO-005 was escalated to P1. Accommodate the priority change but keep SO-003 on time — it has a confirmed deployment window."
+SHOW: "Comment received" → "Requesting revised schedule..." → AI returns new schedule
+SAY:  "The agent sends a structured JSON input to Gemini — all orders with deadlines, production times, and the user's feedback. Gemini returns a structured JSON reorder plus a comment explaining its reasoning."
+SHOW: New schedule with AI comment visible. SO-003 still on time, SO-005 moved up as far as safely possible.
+SAY:  "SO-003 stays on time. SO-005 moved earlier. The AI explains exactly what it did and why. Zero deadline violations."
+DO:   Tap "Accept" to confirm the schedule
+
+
+STAGE 4 — Physical Integration + Defect + Client Notification [1:30 – 2:00]
+-----------------------------------------------------------------------------
+SAY:  "Now production is running. We built a digital twin — a physical simulation of the factory line. Each production order has a live video stream link."
+DO:   Tap into a production order detail — show the video stream link
+SHOW: Digital twin footage (or screenshot of it running)
+SAY:  "A separate computer vision node monitors this stream for defects and sends real-time events to the agent."
+SHOW: Bot notification: "Defect detected in batch — 1 of 3 items failed"
+SAY:  "A defect was caught. The bot gives us two options: restart the batch and push later orders back, or cancel and move everything forward."
+DO:   Choose restart — schedule updates, two orders now show as late
+SHOW: Updated schedule with late orders highlighted
+SAY:  "Two orders will now miss their deadlines. We tap 'Notify Clients' — the agent composes personalized delay emails per customer through the Arke API and sends them."
+DO:   Tap "Notify Clients" button
+SHOW: Email notification summary in Telegram (customers notified, delay amounts)
+SAY:  "End-to-end: read orders, schedule, approve, detect defects from the physical world, reschedule, notify stakeholders. All through one Telegram agent."
+
+
+SO-005 was escalated P3 -> P1.  
+A naive priority-first plan can schedule SO-005 before SO-003 and miss SO-003 by a day.  
+An EDF-correct plan keeps SO-003 first (tighter deadline) and can still meet both.

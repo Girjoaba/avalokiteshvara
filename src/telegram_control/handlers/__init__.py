@@ -12,7 +12,7 @@ from telegram.ext import (
     filters,
 )
 
-from . import menu, onboarding, production, sales_orders, schedule
+from . import factory, menu, onboarding, production, sales_orders, schedule
 
 
 def register_handlers(app: Application) -> None:
@@ -63,7 +63,12 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CallbackQueryHandler(schedule.cb_accept, pattern=r"^sc:acc$"))
     app.add_handler(CallbackQueryHandler(schedule.cb_reject, pattern=r"^sc:rej$"))
     app.add_handler(CallbackQueryHandler(schedule.cb_comment, pattern=r"^sc:com$"))
+    app.add_handler(CallbackQueryHandler(schedule.cb_delay_emails, pattern=r"^sc:delay_emails$"))
     app.add_handler(CallbackQueryHandler(schedule.cb_entry_detail, pattern=r"^sc:e:"))
+
+    # ---- Factory failure actions ----
+    app.add_handler(CallbackQueryHandler(factory.cb_factory_cancel, pattern=r"^ff:cancel:"))
+    app.add_handler(CallbackQueryHandler(factory.cb_factory_restart, pattern=r"^ff:restart:"))
 
     # ---- No-op (pagination label clicks etc.) ----
     app.add_handler(CallbackQueryHandler(_noop_callback, pattern=r"^noop$"))

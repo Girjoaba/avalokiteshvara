@@ -27,3 +27,11 @@ PHASE_COLORS = {
     "Coating": "#4db6ac",
     "Pack":    "#aed581",
 }
+
+CLIENT_EMAILS: dict[str, str] = {
+    "IndustrialCore": "vladimisachkov2003@gmail.com",
+    "MedTec Devices":  "vladimisachkov2003@gmail.com",
+    "AgriBot Systems": "vladimisachkov2003@gmail.com",
+    "TechFlex":        "vladimisachkov2003@gmail.com",
+    "SmartHome IoT":   "vladimisachkov2003@gmail.com",
+}

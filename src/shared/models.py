@@ -19,6 +19,7 @@ class NotificationType(Enum):
     DEADLINE_AT_RISK = "deadline_at_risk"
     SCHEDULE_PROPOSED = "schedule_proposed"
     PRIORITY_CHANGED = "priority_changed"
+    FACTORY_FAILURE = "factory_failure"
 
 
 # ---------------------------------------------------------------------------

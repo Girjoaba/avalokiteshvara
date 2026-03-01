@@ -158,6 +158,8 @@ def schedule_view_keyboard(schedule: Schedule | None) -> InlineKeyboardMarkup:
             _btn("\u274c Reject", "sc:rej"),
         ])
         rows.append([_btn("\U0001f4ac Comment & Revise", "sc:com")])
+    if schedule and schedule.late_count > 0:
+        rows.append([_btn("\U0001f4e7 Send Delay Messages to Clients", "sc:delay_emails")])
     rows.append([_btn("\U0001f504 Request New Schedule", "sc:req")])
     rows.append([BACK_MENU_BTN])
     return InlineKeyboardMarkup(rows)
@@ -198,6 +200,23 @@ def settings_keyboard() -> InlineKeyboardMarkup:
 # ------------------------------------------------------------------
 # Notification action buttons
 # ------------------------------------------------------------------
+
+def factory_failure_keyboard(
+    production_order_id: str,
+    sales_order_id: str = "",
+) -> InlineKeyboardMarkup:
+    """Two-button prompt shown after a factory failure is detected."""
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            _btn("\u274c Cancel Order", f"ff:cancel:{production_order_id}"),
+            _btn("\U0001f504 Restart Order", f"ff:restart:{production_order_id}"),
+        ],
+        [_btn("\U0001f3ed View PO", f"po:d:{production_order_id}")],
+    ]
+    if sales_order_id:
+        rows[-1].append(_btn("\U0001f4cb View SO", f"so:d:{sales_order_id}"))
+    return InlineKeyboardMarkup(rows)
+
 
 def notification_action_keyboard(
     production_order_id: str = "",

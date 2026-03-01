@@ -27,35 +27,57 @@ logger = logging.getLogger(__name__)
 
 _DT_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
+_PRODUCT_MINS: dict[str, int] = {
+    "PCB-IND-100": 147,
+    "MED-300": 279,
+    "IOT-200": 63,
+    "AGR-400": 144,
+    "PCB-PWR-500": 75,
+}
+
 SYSTEM_PROMPT = """\
 You are a production scheduling advisor for NovaBoard Electronics, a PCB contract manufacturer.
+Your #1 JOB is to OBEY THE USER'S REORDERING / PRIORITISATION REQUEST.
 
 FACTORY CONSTRAINTS:
-- Single production line — orders run sequentially, never in parallel
-- 480 min/day (08:00–16:00), 7 days/week
-- Phase time = duration_per_unit × quantity
-- Each order follows its product's BOM phase sequence
+- Single production line — orders run sequentially, never in parallel.
+- 480 working minutes per day (08:00–16:00 shift), 7 days/week, no breaks.
+- Each order's total production time = minutes_per_unit × quantity (provided in input).
 
-PRODUCTS (minutes per unit per phase):
-  PCB-IND-100: SMT(30) Reflow(15) THT(45) AOI(12) Test(30) Coating(9) Pack(6) = 147 min/unit
-  MED-300:     SMT(45) Reflow(30) THT(60) AOI(30) Test(90) Coating(15) Pack(9) = 279 min/unit
-  IOT-200:     SMT(18) Reflow(12) AOI(9) Test(18) Pack(6) = 63 min/unit
-  AGR-400:     SMT(30) Reflow(15) THT(30) AOI(12) Test(45) Coating(12) = 144 min/unit
-  PCB-PWR-500: SMT(24) Reflow(12) AOI(9) Test(24) Pack(6) = 75 min/unit
+PRODUCTS (total minutes per unit — already summed across all BOM phases):
+  PCB-IND-100  147 min/unit
+  MED-300      279 min/unit
+  IOT-200       63 min/unit
+  AGR-400      144 min/unit
+  PCB-PWR-500   75 min/unit
 
-SCHEDULING POLICY — Earliest Deadline First (EDF):
-- Primary sort: deadline (earliest first)
-- Tie-break: priority (1 = critical, 2 = high, 3 = normal, 4 = low)
-- CRITICAL RULE: A tighter deadline ALWAYS takes precedence over higher priority.
-  SO-003 (deadline Mar 4, P2) MUST come before SO-005 (deadline Mar 8, P1)
-  even though SO-005 has higher priority.  EDF prevents deadline damage.
+CRITICAL RULES FOR REORDERING:
+1. The input includes an EDF BASELINE with estimated finish times and on-time status.
+   Some orders may ALREADY be late in the baseline — you cannot magically fix all of them.
+2. THE USER'S REQUEST TAKES ABSOLUTE PRIORITY over EDF ordering.
+   - If the user says "prioritize customer X", move ALL of customer X's orders as EARLY
+     as possible so they meet their deadlines.
+   - If this causes OTHER orders to become late or MORE late, THAT IS ACCEPTABLE.
+   - The user is explicitly choosing which customers/orders matter most.
+3. Only try to preserve deadlines for orders the user did NOT deprioritize.
+4. After reordering, VERIFY your sequence by walking the clock:
+   - Start at sim_now. For each order, finish = clock + production_minutes (within 480 min/day).
+   - Report which orders are on time and which are late in "conflicts".
+
+STEP-BY-STEP STRATEGY:
+a) Read the user's request. Identify which customer(s)/order(s) to PROTECT.
+b) Place all PROTECTED orders as early as possible in the sequence.
+c) Fill remaining slots with non-protected orders in EDF order (deadline, then priority).
+d) Walk the full sequence with the clock to compute finish times.
+e) List any deadline violations in "conflicts" — this is informational, NOT a reason to
+   undo the user's requested reorder.
 
 YOUR TASK:
-Given the current schedule state and the user's feedback, produce a JSON object with:
-1. reordered_so_ids  — ALL pending order IDs in your recommended sequence
+Return a JSON object with:
+1. reordered_so_ids  — ALL pending order IDs in your recommended production sequence
 2. priority_updates  — any priority changes you recommend (can be empty)
-3. ai_comment        — 2-4 sentence explanation addressing the user's concerns
-4. conflicts         — list of detected scheduling risks or conflicts
+3. ai_comment        — 2-4 sentences: what you moved, which orders improved, which got worse
+4. conflicts         — human-readable list of orders that will miss their deadline in this sequence
 
 OUTPUT FORMAT (strict JSON, no markdown fences):
 {
@@ -64,13 +86,14 @@ OUTPUT FORMAT (strict JSON, no markdown fences):
     {"sales_order_id": "...", "new_priority": 1, "reason": "..."}
   ],
   "ai_comment": "...",
-  "conflicts": ["..."]
+  "conflicts": ["SO-XXX late by ~Xh", "..."]
 }
 
 RULES:
-- reordered_so_ids MUST contain exactly the IDs from pending_orders, reordered
-- new_priority must be 1-4
-- Do NOT reorder items listed in current_schedule (they are already in production)
+- reordered_so_ids MUST contain exactly the same IDs from pending_orders, just reordered.
+- Do NOT reorder items in current_schedule (already in production).
+- DO what the user asks even if it creates deadline violations for OTHER orders.
+- Never refuse the user's request. Execute it and report the consequences.
 """
 
 
@@ -124,6 +147,65 @@ def build_ai_input(
 # Gemini call (sync, wrapped for async callers)
 # ------------------------------------------------------------------
 
+def _compute_edf_baseline(
+    pending: list[AIScheduleOrderInput],
+    sim_now_str: str,
+) -> str:
+    """Walk pending orders in EDF order and produce a human-readable baseline timeline."""
+    from datetime import datetime, timedelta
+
+    try:
+        sim_now = datetime.strptime(sim_now_str, _DT_FMT)
+    except ValueError:
+        return "(could not compute baseline)"
+
+    sorted_orders = sorted(pending, key=lambda o: (o.deadline, o.priority))
+
+    lines: list[str] = []
+    cursor = sim_now
+    if cursor.hour < 8:
+        cursor = cursor.replace(hour=8, minute=0, second=0)
+    elif cursor.hour >= 16:
+        cursor = (cursor + timedelta(days=1)).replace(hour=8, minute=0, second=0)
+
+    total_mins = 0
+    for o in sorted_orders:
+        mins_per_unit = _PRODUCT_MINS.get(o.product_internal_id, 0)
+        prod_mins = mins_per_unit * o.qty
+        total_mins += prod_mins
+
+        remaining = prod_mins
+        end = cursor
+        while remaining > 0:
+            elapsed_today = (end.hour * 60 + end.minute) - 8 * 60
+            left_in_shift = 480 - elapsed_today
+            if remaining <= left_in_shift:
+                end = end + timedelta(minutes=remaining)
+                remaining = 0
+            else:
+                remaining -= left_in_shift
+                end = (end + timedelta(days=1)).replace(hour=8, minute=0, second=0)
+
+        dl = datetime.strptime(o.deadline, _DT_FMT)
+        on_time = end <= dl
+        slack_h = (dl - end).total_seconds() / 3600
+        status = f"ON TIME (+{slack_h:.1f}h)" if on_time else f"LATE by {abs(slack_h):.1f}h"
+
+        lines.append(
+            f"  {o.sales_order_internal_id} | {o.customer} | "
+            f"{o.product_internal_id} x{o.qty} | {prod_mins}min ({prod_mins/480:.1f}d) | "
+            f"start {cursor.strftime('%b %d %H:%M')} -> end {end.strftime('%b %d %H:%M')} | "
+            f"deadline {dl.strftime('%b %d %H:%M')} | {status}"
+        )
+        cursor = end
+
+    header = (
+        f"Total work: {total_mins} min = {total_mins/480:.1f} working days. "
+        f"Available from {sim_now_str} to last finish: {cursor.strftime(_DT_FMT)}"
+    )
+    return header + "\n" + "\n".join(lines)
+
+
 def _call_gemini_sync(ai_input: AIScheduleInput) -> AIScheduleOutput:
     """Synchronous Gemini call — run via ``asyncio.to_thread``."""
     from google import genai
@@ -135,15 +217,29 @@ def _call_gemini_sync(ai_input: AIScheduleInput) -> AIScheduleOutput:
         return AIScheduleOutput(ai_comment="AI unavailable (no API key).")
 
     model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-    payload = json.dumps(asdict(ai_input), indent=2)
+
+    enriched_pending = []
+    for o in ai_input.pending_orders:
+        d = asdict(o)
+        mins_per_unit = _PRODUCT_MINS.get(o.product_internal_id, 0)
+        prod_mins = mins_per_unit * o.qty
+        d["production_minutes"] = prod_mins
+        d["production_days"] = round(prod_mins / 480, 2)
+        enriched_pending.append(d)
+
+    edf_baseline = _compute_edf_baseline(ai_input.pending_orders, ai_input.sim_now)
+
     user_prompt = (
-        f"Current time: {ai_input.sim_now}\n\n"
+        f"Current time (sim_now): {ai_input.sim_now}\n\n"
         f"CURRENTLY IN PRODUCTION (cannot be reordered):\n"
         f"{json.dumps([asdict(e) for e in ai_input.current_schedule], indent=2)}\n\n"
         f"PENDING ORDERS TO SCHEDULE (these need ordering):\n"
-        f"{json.dumps([asdict(e) for e in ai_input.pending_orders], indent=2)}\n\n"
-        f"USER FEEDBACK: {ai_input.user_feedback}\n\n"
-        f"Respond with the JSON schedule adjustment."
+        f"{json.dumps(enriched_pending, indent=2)}\n\n"
+        f"EDF BASELINE (current default order — deadlines and violations):\n"
+        f"{edf_baseline}\n\n"
+        f"USER REQUEST: {ai_input.user_feedback}\n\n"
+        f"Reorder the pending orders to satisfy the user's request. "
+        f"Return the JSON response."
     )
 
     logger.info("Calling Gemini model=%s with %d existing + %d pending orders",

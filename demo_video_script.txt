@@ -1,0 +1,26 @@
+I want to make the following video outlining the content and best features of the product we build within 24 hours for the Arke challenge.
+Main control point, and observability for the manufacturing line, and current state of sales orders.
+You can go throught the history book and pending list of sales ordered and their statuses. They can be completed,
+scheduled for production, or waited to be scheduled for production.
+You can look at the schedule, and the bot will output currently scheduled production orders and will output the image of the 
+Gantt chart of the scheduled production orders.
+Program is also dependen on real time data, and stram of events from the factory (whether the production orders have been completed successfully), 
+from the sales api to get new sales orders.
+Since this is a demo, we made the current time, and time rate configurable so we can speed up the events, and see what 
+happen in the future. Let's say we are now at february 26, and let's generate a schedule for 12 mock sales orders
+Ok we see a generated schedule, lets now adress the conflicts, and give human text feedback:
+SO-005 was escalated P3 -> P1. A naive priority-first plan can schedule SO-005 before SO-003 and miss SO-003 by a day. 
+An EDF-correct plan keeps SO-003 first (tighter deadline) and can still meet both.
+We make a structured input output to AI agent, and based on user comments reschedules the order while keeping the EDF
+constrain in place.
+Ok now we have a feature to track current factory processing of the the order and get real time events, 
+if we go into this factory order, we can see its currently running, we can follow a link and see the real time stream
+of the factory footage. For now we implemented a digital twin physical simulation of the factory, but the flexible
+and modular design of the agent allows to reconnect real time video stream from the camera.
+We also have a separate computer vision node that monitors events of the configured video stream, and will send events to
+AI agent if the production order.
+Ok we can see from 3 currently processed items 1 had a defect, we got a notification in the bot, and we can react.
+Curently there are two options, either its going to reschedule the batch from the start and will have to move all other production
+orders later, or just cancel the order, and move other orders forward.
+We can now see there are two production orders which deadlines cannot be met, so we can press a button, that will use
+Arke api to parse emails of the clients, and will send a message notifying the client the order will be delayed by this specific time.
