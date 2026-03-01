@@ -4,6 +4,9 @@
 
 Built for **NovaBoard Electronics** — a contract PCB manufacturer running 12 concurrent sales orders on a single production line with 7 manufacturing phases, tight deadlines, and priority conflicts that require both deterministic algorithms and AI reasoning to resolve.
 
+## 🎥 Demo
+https://github.com/user-attachments/assets/15eeaa39-b0eb-47b4-b7d1-ea36265cb1bc
+
 ---
 
 ## Architecture Overview
